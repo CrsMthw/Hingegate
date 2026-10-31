@@ -688,6 +688,7 @@ private fun logSentence(entry: LogEntry): String = when (val phrase = LogPhrase.
             SwapFailure.NO_PANEL_SIZE -> R.string.log_swap_failed_size
             SwapFailure.READ_FAILED -> R.string.log_swap_failed_read
             SwapFailure.SET_FAILED -> R.string.log_swap_failed_set
+            SwapFailure.CHANGED_DURING_READ -> R.string.log_swap_failed_changed
         },
     )
 }

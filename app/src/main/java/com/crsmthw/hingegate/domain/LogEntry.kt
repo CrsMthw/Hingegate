@@ -35,6 +35,12 @@ enum class SwapFailure {
 
     /** The system refused the new wallpaper. */
     SET_FAILED,
+
+    /**
+     * The wallpaper's id moved while it was being read (or the posture changed under the read): the copy is thrown
+     * away and the wallpaper read again; nothing is lost.
+     */
+    CHANGED_DURING_READ,
 }
 
 /**

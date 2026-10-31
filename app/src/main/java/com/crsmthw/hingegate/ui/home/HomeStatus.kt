@@ -89,7 +89,8 @@ enum class HomeMessage {
             SwapFailure.ALREADY_OURS -> CAPTURE_ALREADY_OURS
             // Nothing was read yet: the size of the inner screen trails a rotation or a panel swap for a moment.
             SwapFailure.NO_PANEL_SIZE -> CAPTURE_NO_SIZE
-            SwapFailure.READ_FAILED, SwapFailure.SET_FAILED, null -> CAPTURE_FAILED
+            // The wallpaper moved under the read: nothing was kept; tapping again reads it afresh.
+            SwapFailure.READ_FAILED, SwapFailure.SET_FAILED, SwapFailure.CHANGED_DURING_READ, null -> CAPTURE_FAILED
         }
     }
 }

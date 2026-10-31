@@ -21,7 +21,8 @@ class CrackGeometryTest {
             lowerTrail = base.lowerTrail.copy(coreColor = CrackColor.TRAIL_WHITE, offsetDp = 0.5f),
             upperTrail = TrailLine(0.8f, CrackColor.TRAIL_DARK, 0.7f),
             blob = base.blob.copy(
-                spikes = listOf(Spike(0f, 10f, 3f), Spike(180f, 12f, 3f)),
+                // Lengths relative to the blob, so the tips clear its outline whatever size the seed gives it.
+                spikes = listOf(Spike(0f, base.blob.radiusAlongDp, 3f), Spike(180f, base.blob.radiusAlongDp * 1.2f, 3f)),
                 speckles = listOf(Speckle(1f, 2f, 0.5f, CrackColor.SPECK_LIGHT)),
             ),
         )
@@ -192,5 +193,190 @@ class CrackGeometryTest {
         // Angle 0 = down the hinge: the tip (2nd point) is below the origin; 180 = up.
         assertTrue(spikes[0].points[3] > originY + s.blob.radiusAlongDp * density)
         assertTrue(spikes[1].points[3] < originY - s.blob.radiusAlongDp * density)
+    }
+
+    /** Whether ([x], [y]) is inside the closed polygon [points] (even-odd ray casting). */
+    private fun inside(points: List<Float>, x: Float, y: Float): Boolean {
+        var result = false
+        val n = points.size / 2
+        var j = n - 1
+        for (i in 0 until n) {
+            val xi = points[2 * i]
+            val yi = points[2 * i + 1]
+            val xj = points[2 * j]
+            val yj = points[2 * j + 1]
+            if ((yi > y) != (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) result = !result
+            j = i
+        }
+        return result
+    }
+
+    /** Each spike's base midpoint (the middle of the triangle's first and last corners) and the blob's fill. */
+    private fun spikeBases(s: CrackSpec, hinge: HingeLine = vertical): Pair<List<Pair<Float, Float>>, List<Float>> {
+        val polygons = CrackGeometry.build(s, frameW, frameH, hinge, density).filterIsInstance<PolygonPrim>()
+        val fill = polygons.single { it.color == CrackColor.BLOB_BLACK && it.strokeWidthPx == 0f && it.points.size > 6 }
+        val bases = polygons.filter { it.points.size == 6 }.map { (it.points[0] + it.points[4]) / 2f to (it.points[1] + it.points[5]) / 2f }
+        return bases to fill.points
+    }
+
+    @Test
+    fun `every spike grows out of the fill, never floats beside it`() {
+        // Build 2's bigger splash made the gap between a spike and a dent in the outline 1.5–2.7× wider in dp.
+        val specs = (0L until 4_000L).map { CrackSpecGenerator.generate(Random(it)) }.filter { it.blob.spikes.isNotEmpty() }
+        for (hinge in listOf(vertical, horizontal)) {
+            specs.forEach { s ->
+                val (bases, fill) = spikeBases(s, hinge)
+                bases.forEachIndexed { i, (x, y) -> assertTrue(inside(fill, x, y), "seed ${s.seed}: spike $i's base is outside the blot") }
+            }
+        }
+    }
+
+    @Test
+    fun `the outline radius is exact on the samples and on the edges between them`() {
+        val radial = List(48) { i -> if (i % 2 == 0) 0.7f else 1.3f }
+        val step = 2.0 * Math.PI / 48
+        assertEquals(0.7, CrackGeometry.outlineRadius(radial, 0.0), 1e-6)
+        assertEquals(1.3, CrackGeometry.outlineRadius(radial, step), 1e-6)
+        assertEquals(0.7, CrackGeometry.outlineRadius(radial, 2.0 * Math.PI), 1e-6)
+        assertEquals(1.3, CrackGeometry.outlineRadius(radial, -step), 1e-6)
+        // Halfway along an edge of a regular polygon the outline is cos(step / 2) of the way out, not at the samples'.
+        val round = List(48) { 1f }
+        assertEquals(kotlin.math.cos(step / 2), CrackGeometry.outlineRadius(round, step / 2), 1e-6)
+        // Between a dent and a bump the crossing is below the samples' average.
+        assertTrue(CrackGeometry.outlineRadius(radial, step / 2) < 1.0)
+    }
+
+    @Test
+    fun `seed 5781's spikes up the hinge start inside the splash`() {
+        // Before: three spikes at 181°, 186° and 191° hovered 2.4–4.4 dp of wallpaper above a dent in the splash.
+        val s = CrackSpecGenerator.generate(Random(5781))
+        val (bases, fill) = spikeBases(s)
+        assertEquals(s.blob.spikes.size, bases.size)
+        bases.forEach { (x, y) -> assertTrue(inside(fill, x, y)) }
+    }
+
+    // ── Build 2: a 30 dp band and a large splash still fit ───────────────────
+
+    /** A frame the crack is drawn in: a panel, or a window the preview stands in for (the preview is a uniform scale). */
+    private class Frame(val name: String, val w: Float, val h: Float, val hinge: HingeLine, val density: Float)
+
+    private val frames = listOf(
+        Frame("Fold 8 inner", 2448f, 1848f, vertical, density),
+        Frame("Fold 6 inner", 1856f, 2160f, HingeLine(HingeOrientation.VERTICAL, 928f, 0f, HingeSource.ESTIMATED), 2.25f),
+        // The preview's fallback before the inner screen is known: the cover window itself, hinge estimated (§5).
+        Frame("Fold 8 cover preview", 1248f, 1972f, HingeInference.estimate(1248, 1972, null), 2.625f),
+        Frame("Fold 6 cover preview", 968f, 2376f, HingeInference.estimate(968, 2376, null), 2.625f),
+    )
+
+    /**
+     * The biggest crack the generator can make: a 30 dp band, a splash at the widest across ratio and the longest
+     * elongation with every radial multiplier at its maximum, full-length spikes straight along the hinge and out the
+     * far side, speckles at the edge of their placement, the widest rim and glow.
+     */
+    private fun worstCase(originAlong: Float): CrackSpec {
+        val g = CrackSpecGenerator
+        val base = (0L until 1_000L).map { g.generate(Random(it)) }.first { it.blob.speckles.isNotEmpty() }
+        val k = g.BAND_THICKNESS_MAX_DP / (bandBottom(base) - bandTop(base))
+        val across = g.BAND_THICKNESS_MAX_DP * g.LARGE_ACROSS_OF_BAND_MAX / 2f
+        val along = across * g.LARGE_ELONGATION_MAX
+        val spike = { angle: Float -> Spike(angle, across * g.SPIKE_LENGTH_MAX, across * g.SPIKE_WIDTH_MAX_FRACTION) }
+        val speckRadius = across * g.SPECKLE_RADIUS_MAX_FRACTION
+        return base.copy(
+            originAlong = originAlong,
+            band = base.band.map { it.copy(offsetDp = it.offsetDp * k, widthDp = it.widthDp * k) },
+            glowDp = g.GLOW_MAX_DP,
+            blob = BlobSpec(
+                radiusAcrossDp = across,
+                radiusAlongDp = along,
+                radial = List(g.RADIAL_COUNT) { g.RADIAL_MAX },
+                spikes = listOf(0f, 180f, g.SPIKE_FAR_SIDE_MIN_DEG, 270f, g.SPIKE_FAR_SIDE_MAX_DEG).map(spike),
+                speckles = listOf(
+                    Speckle(0f, along * g.SPECKLE_PLACEMENT, speckRadius, CrackColor.SPECK_LIGHT),
+                    Speckle(0f, -along * g.SPECKLE_PLACEMENT, speckRadius, CrackColor.SPECK_BLUE),
+                    Speckle(across * g.SPECKLE_PLACEMENT, 0f, speckRadius, CrackColor.SPECK_LIGHT),
+                ),
+                rimWidthDp = g.BAND_THICKNESS_MAX_DP * g.RIM_WIDTH_MAX_OF_BAND,
+            ),
+        )
+    }
+
+    /**
+     * Everything of [s] laid out in [f] must sit inside the frame across the band's length (the band and glow along
+     * the hinge, the whole blob), the trails must start exactly at the band's edges and never cross it, and the
+     * glow's stops must make a valid gradient.
+     */
+    private fun assertFits(s: CrackSpec, f: Frame, what: String) {
+        val prims = CrackGeometry.build(s, f.w, f.h, f.hinge, f.density)
+        val vertical = f.hinge.orientation == HingeOrientation.VERTICAL
+        // Position along the hinge (u) of a frame point.
+        fun u(x: Float, y: Float) = if (vertical) y else f.w - x
+        val length = if (vertical) f.h else f.w
+        val u0 = s.originAlong * length
+        val topU = u0 + bandTop(s) * f.density
+        val bottomU = u0 + bandBottom(s) * f.density
+        val tol = 1e-2f
+        fun inside(x: Float, y: Float, margin: Float = 0f) =
+            x - margin >= -tol && x + margin <= f.w + tol && y - margin >= -tol && y + margin <= f.h + tol
+
+        val strokes = prims.filterIsInstance<StrokePrim>()
+        strokes.take(s.band.size).forEach { line ->
+            val centre = u(line.x0, line.y0)
+            assertTrue(centre - line.widthPx / 2f >= 0f && centre + line.widthPx / 2f <= length, "$what: band line off the panel")
+        }
+        prims.filterIsInstance<GlowPrim>().forEach { glow ->
+            val centre = u(glow.x0, glow.y0)
+            assertEquals((bandBottom(s) - bandTop(s)) / 2f * f.density + glow.haloPx, glow.halfWidthPx, 1e-2f)
+            assertTrue(centre - glow.halfWidthPx >= 0f && centre + glow.halfWidthPx <= length, "$what: glow off the panel")
+            val stops = glow.stopPositions().toList()
+            assertTrue(stops.first() == 0f && stops.last() == 1f && stops[1] < 0.5f, "$what: stops $stops")
+            stops.zipWithNext().forEach { (a, b) -> assertTrue(a <= b, "$what: stops $stops") }
+        }
+        // Trails: the lower from the band's lower edge, the upper from its upper edge; neither crosses the band.
+        val trails = strokes.drop(s.band.size)
+        trails.forEach { trail ->
+            val start = u(trail.x0, trail.y0)
+            val expected = if (trail.color == CrackColor.TRAIL_DARK) topU else bottomU
+            assertEquals(expected, start, 1e-2f, "$what: trail start")
+            val from = minOf(start, u(trail.x1, trail.y1))
+            val to = maxOf(start, u(trail.x1, trail.y1))
+            assertTrue(to <= topU + tol || from >= bottomU - tol, "$what: trail $from..$to crosses the band $topU..$bottomU")
+        }
+        prims.filterIsInstance<PolygonPrim>().forEach { poly ->
+            val margin = poly.strokeWidthPx / 2f
+            poly.points.chunked(2).forEach { (x, y) -> assertTrue(inside(x, y, margin), "$what: blob point ($x, $y) clipped") }
+        }
+        prims.filterIsInstance<DotPrim>().forEach { dot ->
+            assertTrue(inside(dot.cx, dot.cy, dot.radiusPx), "$what: speckle clipped")
+        }
+    }
+
+    @Test
+    fun `the biggest crack fits every panel and preview`() {
+        for (f in frames) {
+            for (origin in listOf(CrackSpecGenerator.ORIGIN_MIN, CrackSpecGenerator.ORIGIN_MAX)) {
+                val s = worstCase(origin)
+                assertEquals(CrackSpecGenerator.BAND_THICKNESS_MAX_DP, bandBottom(s) - bandTop(s), 1e-3f)
+                assertFits(s, f, "${f.name} at origin $origin")
+            }
+        }
+    }
+
+    @Test
+    fun `generated cracks fit every panel and preview`() {
+        val specs = (0L until 2_000L).map { CrackSpecGenerator.generate(Random(it)) }
+        for (f in frames) specs.forEach { s -> assertFits(s, f, "${f.name}, seed ${s.seed}") }
+    }
+
+    @Test
+    fun `a preview is the panel's layout scaled down`() {
+        // The preview draws the panel's frame and density times the same factor, so what fits the panel fits it.
+        val s = worstCase(CrackSpecGenerator.ORIGIN_MAX)
+        val k = 900f / 1856f
+        val panel = CrackGeometry.build(s, 1856f, 2160f, HingeLine(HingeOrientation.VERTICAL, 928f, 0f, HingeSource.ESTIMATED), 2.25f)
+        val preview = CrackGeometry.build(s, 1856f * k, 2160f * k, HingeLine(HingeOrientation.VERTICAL, 928f * k, 0f, HingeSource.ESTIMATED), 2.25f * k)
+        val a = panel.filterIsInstance<PolygonPrim>().flatMap { it.points }
+        val b = preview.filterIsInstance<PolygonPrim>().flatMap { it.points }
+        assertEquals(a.size, b.size)
+        a.zip(b).forEach { (p, q) -> assertEquals(p * k, q, 1e-2f) }
     }
 }

@@ -4,6 +4,56 @@ All notable changes to Hingegate are recorded here. Entries are never folded or 
 
 ## Unreleased
 
+### 2026-10-31 — build 2
+- The look (after testing build 1 on the Fold 8): the band from the blot to the right edge is much thicker — the
+  thickest band seen on build 1 (≈ 13 dp) is now the thinnest, and every crack is 13–30 dp (a large splash 26–30 dp,
+  like the reference photos). The fringes, the violet separator and the glow are about 2.2 times build 1's, and the
+  white cores take all the rest of the thickness, so a thick band is solid light: between its lines at most a
+  hairline of wallpaper shows, and only now and then (as in photo 6) the bottom fringe stands apart across a
+  visible gap — the two together never more than about a third of the band. The ink blot now scales with the band:
+  a small dot is 0.7–1.0 times the band's thickness across, a large splash 1.4–1.8 times, with its spikes, specks
+  and rim to match; every spike grows out of the blot, never beside a dent in it. The trails up and down the fold
+  are unchanged. A crack saved by build 1 still loads and shows once at its old size. 20 new JVM tests (187 in
+  all): the 13–30 dp bounds over 10 000 seeds, no gap wider than a third of the band and at least two thirds of it
+  solid, the lone fringe's odds, the cores filling a thick band, the large splash's band, the blot's proportions,
+  every spike starting inside the blot, determinism, a build 1 crack loading, and the largest crack fitting both
+  inner screens and the cover-screen preview.
+- Real wallpaper on Samsung foldables (build 1, checklist item 34: a visible change after some unfolds, "cracked
+  copy set late", and the captured wallpaper forgotten after folding and unfolding with the app open). The forgotten
+  capture came from a read at the unfold that One UI answered for the COVER screen (whose wallpaper is live): it
+  looked like a new live wallpaper and made the mode let go. Now every read names the inner screen
+  (`FLAG_SYSTEM | 4`, which One UI answers for the inner panel whatever the fold state — read from the phones' own
+  framework), and nothing is decided from a read until the inner screen has been in use, with no fold or unfold,
+  for 1.5 s; anything that asks earlier is checked at the end of that time — also when it asks while an earlier
+  check is running. "Use my current wallpaper" tapped during it waits for it.
+- Real wallpaper: a wallpaper the user changed is only acted on when a second read half a second later agrees;
+  until then nothing is staged or put back. A recapture that fails (a live wallpaper, All files access off, an
+  unreadable file) keeps the original and tries once more before letting go, so one odd read can never show "Not
+  captured yet". An automatic recapture only keeps the id the check saw, and never one of Hingegate's own copies —
+  also when the app was killed in the middle of setting one (each set is recorded before it is made). Nothing is
+  ever set over a wallpaper no settled check has seen.
+- Real wallpaper: the copies are prepared while the inner screen is in use — the clean copy (the original's own
+  file when it already fits the screen, so it is pixel-identical) and the NEXT crack's copy — and handed to the
+  system as finished files at the fold, so a quick unfold no longer catches the change. For that the next crack is
+  chosen ahead (and kept across restarts); the odds, the guarantee and "Crack on the next unfold" are unchanged, and
+  the other two modes look exactly as before. Copies are drawn one at a time. With nothing prepared yet the copy is
+  drawn on the spot as before.
+  A copy staged at the fold that only finished after the unfold is logged as late, so the log matches what is seen.
+- Real wallpaper: logcat diagnostics for testing on the phone (tags `HingegateSwap` and `HingegateCrack`): every
+  check with both postures, whether settled, the id read with and without the inner-screen flag and the decision;
+  every set with the target, timing, flags, how it was set, the time to find or prepare the image, to record the
+  set and to make it, and the id; every prepare with its render and encode times. A live wallpaper from another app
+  is now recognised as live (the app may see which apps offer live wallpapers); a wallpaper change on the cover
+  screen no longer triggers a check. 48 new JVM tests (235 in all): the settle clock and its scheduled check (one
+  asked for while another fires is kept), the two-read confirmation, the failed-recapture rules, a capture's
+  verdict, the guard and the last look before a set, a set cut short by the process dying, the prepared images'
+  names, plan and cleanup, when the original serves as the clean copy, the pre-chosen crack keeping the odds, the
+  late-set logging, and a build 1 state still loading.
+- Real wallpaper: a copy staged while folded is confirmed on the spot by reading the inner screen's id (which One UI
+  answers for the inner panel even while folded), so a wallpaper the user then sets for the inner screen from the
+  cover screen is recognised as theirs and captured at the unfold, instead of being taken for Hingegate's copy and
+  replaced by the old one at the next fold (build 1's known limit). 3 more JVM tests (238 in all).
+
 ### 2026-10-31 — review fixes
 - Real wallpaper: the id the system reports after a set counts as Hingegate's copy only when it changed and is
   not the original's, and on Samsung every set waits for the next check to confirm it — so a copy that never

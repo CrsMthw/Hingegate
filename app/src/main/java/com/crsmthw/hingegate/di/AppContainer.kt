@@ -1,15 +1,18 @@
 package com.crsmthw.hingegate.di
 
 import android.content.Context
+import android.os.Build
 import com.crsmthw.hingegate.crack.CrackController
 import com.crsmthw.hingegate.data.CrackLog
 import com.crsmthw.hingegate.data.SettingsRepository
 import com.crsmthw.hingegate.data.SwapRepository
 import com.crsmthw.hingegate.data.WallpaperImages
 import com.crsmthw.hingegate.data.hingegateStore
+import com.crsmthw.hingegate.domain.SwapFlags
 import com.crsmthw.hingegate.posture.PostureMonitor
 import com.crsmthw.hingegate.render.CrackPalette
 import com.crsmthw.hingegate.swap.CurrentWallpaperSource
+import com.crsmthw.hingegate.swap.PreparedImages
 import com.crsmthw.hingegate.swap.SwapRenderer
 import com.crsmthw.hingegate.swap.WallpaperSwapper
 import kotlinx.coroutines.CoroutineScope
@@ -52,7 +55,13 @@ class AppContainer(context: Context) {
 
     val swapRepository = SwapRepository(appContext.hingegateStore, json)
 
-    val currentWallpaper = CurrentWallpaperSource(appContext)
+    /** Samsung keeps one wallpaper per panel and takes the inner-panel bit (docs/SWAP-MODE.md §1). */
+    private val isSamsung: Boolean = SwapFlags.isSamsung(Build.MANUFACTURER)
+
+    val currentWallpaper = CurrentWallpaperSource(appContext, isSamsung)
+
+    /** The images prepared ahead of a fold (docs/SWAP-MODE.md §10.28), with a renderer of their own. */
+    private val preparedImages = PreparedImages(appContext, currentWallpaper, SwapRenderer(currentWallpaper) { crackPalette })
 
     /** The Real wallpaper mode (docs/SWAP-MODE.md §3); renders with the palette, loaded on its first set. */
     val wallpaperSwapper = WallpaperSwapper(
@@ -61,10 +70,12 @@ class AppContainer(context: Context) {
         store = swapRepository,
         source = currentWallpaper,
         renderer = SwapRenderer(currentWallpaper) { crackPalette },
+        prepared = preparedImages,
         controller = crackController,
         monitor = postureMonitor,
         log = crackLog,
         scope = appScope,
+        isSamsung = isSamsung,
     )
 
     /** Whether the foreground service is running, for the UI's status line. Written by the service. */

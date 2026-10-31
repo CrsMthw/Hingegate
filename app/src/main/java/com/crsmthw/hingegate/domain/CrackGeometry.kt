@@ -64,8 +64,18 @@ object CrackGeometry {
 
     const val SPECKLE_ALPHA = 0.9f
 
-    /** Spike bases sit this far inside the blob's outline so the triangles grow out of the fill seamlessly. */
+    /**
+     * A spike's tip is measured from this far out along the smooth ellipse (its length starts there), and its base
+     * sits there too, inside the fill — unless the noisy outline dips below it in the spike's direction (the radial
+     * multipliers go down to 0.7).
+     */
     const val SPIKE_BASE_INSET = 0.8f
+
+    /**
+     * Then the base sits this much (as a radial multiplier) inside the outline instead, so the triangle always grows
+     * out of the fill and never floats beside a dent in it (build 2's bigger splash made such gaps 2–4 dp wide).
+     */
+    const val SPIKE_BASE_MARGIN = 0.05f
 
     /** How the glow's colour is picked: the colour of the band's first core. */
     private val CORE_COLORS = setOf(CrackColor.BAND_WHITE, CrackColor.BAND_ICE)
@@ -147,12 +157,13 @@ object CrackGeometry {
         val angle = spike.angleDeg * PI / 180.0
         val du = cos(angle).toFloat()
         val dv = sin(angle).toFloat()
-        // Base centre: on the (unperturbed) ellipse in the spike's direction, pulled a little inside so the
-        // triangle grows out of the fill; the length is measured from there.
-        val baseU = u0 + du * px(blob.radiusAlongDp) * SPIKE_BASE_INSET
-        val baseV = dv * px(blob.radiusAcrossDp) * SPIKE_BASE_INSET
-        val tipU = baseU + du * px(spike.lengthDp)
-        val tipV = baseV + dv * px(spike.lengthDp)
+        // The tip: the spike's length out from the (unperturbed) ellipse pulled in to SPIKE_BASE_INSET.
+        val tipU = u0 + du * (px(blob.radiusAlongDp) * SPIKE_BASE_INSET + px(spike.lengthDp))
+        val tipV = dv * (px(blob.radiusAcrossDp) * SPIKE_BASE_INSET + px(spike.lengthDp))
+        // The base centre: there too, or just inside the fill's outline where it dips below that in this direction.
+        val inset = minOf(SPIKE_BASE_INSET, (outlineRadius(blob.radial, angle) - SPIKE_BASE_MARGIN).toFloat())
+        val baseU = u0 + du * px(blob.radiusAlongDp) * inset
+        val baseV = dv * px(blob.radiusAcrossDp) * inset
         val half = px(spike.widthDp) / 2f
         // Perpendicular to the spike's direction in (u, v).
         val pu = -dv * half
@@ -162,6 +173,24 @@ object CrackGeometry {
             map.x(tipU, tipV), map.y(tipU, tipV),
             map.x(baseU - pu, baseV - pv), map.y(baseU - pu, baseV - pv),
         )
+    }
+
+    /**
+     * Where the blob's outline crosses the direction at parametric angle [theta] (radians, as [blobOutline] and the
+     * spikes measure it), as a multiple of the smooth ellipse there. Scaled by the two radii the outline is the star
+     * polygon through `radial[i]` at angle `2πi/n`, so this is the exact crossing with the edge between the two
+     * samples around [theta] (a linear interpolation of the two samples can lie outside it).
+     */
+    internal fun outlineRadius(radial: List<Float>, theta: Double): Double {
+        val n = radial.size
+        if (n == 0) return 1.0
+        val step = 2.0 * PI / n
+        val t = ((theta % (2.0 * PI)) + 2.0 * PI) % (2.0 * PI)
+        val i = (t / step).toInt().coerceIn(0, n - 1)
+        val ri = radial[i].toDouble()
+        val rj = radial[(i + 1) % n].toDouble()
+        val past = t - i * step
+        return ri * rj * sin(step) / (ri * sin(past) + rj * sin(step - past))
     }
 
     /**

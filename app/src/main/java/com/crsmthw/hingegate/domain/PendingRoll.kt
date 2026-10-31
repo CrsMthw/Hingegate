@@ -29,17 +29,25 @@ data class UnfoldOutcome(
     val spec: CrackSpec?,
     /** True when the pending roll made at the fold was used as it was. */
     val preRolled: Boolean,
+    /** True when the crack shown is the pre-chosen next crack: a new one must be chosen for the next hit. */
+    val consumedNext: Boolean = false,
 )
 
 /**
  * Pre-rolling (docs/SWAP-MODE.md §2), pure. The fold rolls the next unfold with [preRoll]; the unfold consumes it
  * with [atUnfold]. The miss streak and the log are still committed at the unfold, so for the overlay and live
  * wallpaper modes nothing changes but WHEN the dice are thrown.
+ *
+ * The crack a hit shows is chosen even earlier (docs/SWAP-MODE.md §10.28): the controller keeps a persisted
+ * "next crack", and every hit decided for a fold or an unfold shows it; the unfold that shows it chooses the next
+ * one ([nextSpecAfter]). The odds are untouched — whether an unfold cracks is still [CrackTrigger.decide] on the
+ * same random source — only the crack's shape is known before the fold, so the Real wallpaper mode can render it
+ * while the inner screen is in use. "Show crack now" keeps making a fresh crack of its own.
  */
 object RollPlanner {
 
-    /** Rolls the next unfold now. A hit carries its crack, generated from the same random source. */
-    fun preRoll(input: TriggerInput, random: Random): PendingRoll {
+    /** Rolls the next unfold now. A hit carries [nextSpec], the pre-chosen crack. */
+    fun preRoll(input: TriggerInput, random: Random, nextSpec: CrackSpec): PendingRoll {
         val result = CrackTrigger.decide(input, random)
         return PendingRoll(
             hit = result.hit,
@@ -48,7 +56,7 @@ object RollPlanner {
             chancePercent = input.chancePercent,
             guaranteeAfter = input.guaranteeAfter,
             missStreak = input.missStreak,
-            spec = if (result.hit) newSpec(random) else null,
+            spec = if (result.hit) nextSpec else null,
         )
     }
 
@@ -65,27 +73,33 @@ object RollPlanner {
 
     /**
      * The unfold's outcome. A usable pending roll is used as it was; "crack on the next unfold" still forces a
-     * hit (FORCED, a fresh crack) over a pending miss; with no usable pending roll the unfold rolls right here,
-     * as before pre-rolling existed. A pending FORCED roll whose switch was turned off is not usable.
+     * hit (FORCED) over a pending miss; with no usable pending roll the unfold rolls right here, as before
+     * pre-rolling existed. A pending FORCED roll whose switch was turned off is not usable. Every hit decided
+     * here shows [nextSpec] (a usable pending hit shows its own crack, which is [nextSpec] unless it was rolled by
+     * an older build).
      */
-    fun atUnfold(pending: PendingRoll?, input: TriggerInput, random: Random): UnfoldOutcome {
+    fun atUnfold(pending: PendingRoll?, input: TriggerInput, random: Random, nextSpec: CrackSpec): UnfoldOutcome {
         val usable = pending?.takeIf {
             it.matchesOdds(input) && it.isWellFormed() && (it.reason != HitReason.FORCED || input.forceNext)
         }
-        if (usable == null) {
-            val result = CrackTrigger.decide(input, random)
-            return UnfoldOutcome(result, if (result.hit) newSpec(random) else null, preRolled = false)
+        val outcome = when {
+            usable == null -> {
+                val result = CrackTrigger.decide(input, random)
+                UnfoldOutcome(result, if (result.hit) nextSpec else null, preRolled = false)
+            }
+            usable.hit -> UnfoldOutcome(TriggerResult(true, usable.reason, usable.roll, 0), usable.spec, preRolled = true)
+            input.forceNext -> {
+                val forced = TriggerResult(true, HitReason.FORCED, CrackTrigger.NOT_ROLLED, 0)
+                UnfoldOutcome(forced, nextSpec, preRolled = false)
+            }
+            else -> UnfoldOutcome(TriggerResult(false, HitReason.MISSED, usable.roll, input.missStreak + 1), null, preRolled = true)
         }
-        if (usable.hit) {
-            return UnfoldOutcome(TriggerResult(true, usable.reason, usable.roll, 0), usable.spec, preRolled = true)
-        }
-        if (input.forceNext) {
-            val forced = TriggerResult(true, HitReason.FORCED, CrackTrigger.NOT_ROLLED, 0)
-            return UnfoldOutcome(forced, newSpec(random), preRolled = false)
-        }
-        val missed = TriggerResult(false, HitReason.MISSED, usable.roll, input.missStreak + 1)
-        return UnfoldOutcome(missed, null, preRolled = true)
+        return outcome.copy(consumedNext = outcome.spec != null && outcome.spec.seed == nextSpec.seed)
     }
+
+    /** The pre-chosen crack after an unfold: a new one once [outcome] showed it, else the same one. */
+    fun nextSpecAfter(outcome: UnfoldOutcome, nextSpec: CrackSpec, random: Random): CrackSpec =
+        if (outcome.consumedNext) newSpec(random) else nextSpec
 
     /**
      * The streak an unfold's log line shows (docs/DESIGN.md §18.5): for a miss, the clean unfolds in a row

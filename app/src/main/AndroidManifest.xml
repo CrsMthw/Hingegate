@@ -16,6 +16,15 @@
     <!-- Puts the user's wallpaper, with or without the crack, back on the inner screen's home screen. -->
     <uses-permission android:name="android.permission.SET_WALLPAPER" />
 
+    <!-- Real wallpaper mode (docs/SWAP-MODE.md §1): getWallpaperInfo answers null for a live wallpaper whose package
+         the app cannot see, which would make a third-party live wallpaper look like a still one. Only apps that
+         offer a live wallpaper become visible; nothing else. -->
+    <queries>
+        <intent>
+            <action android:name="android.service.wallpaper.WallpaperService" />
+        </intent>
+    </queries>
+
     <!-- Wallpaper mode needs live wallpapers, but the overlay mode works without them. -->
     <uses-feature
         android:name="android.software.live_wallpaper"

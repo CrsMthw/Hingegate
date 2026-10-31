@@ -22,7 +22,10 @@ import com.crsmthw.hingegate.render.CrackRenderer
  *
  * The crack is baked for the panel's natural orientation: this mode does not follow rotation.
  *
- * Not thread-safe; the swapper calls it from one coroutine at a time (under its lock).
+ * Not thread-safe (its paint and its [CrackRenderer]'s paints, matrix and geometry cache are shared by every
+ * render): each user holds its own instance and runs one render at a time — the swapper's fallback render under its
+ * lock, [PreparedImages]' renders under their own mutex (a cancelled prepare's render runs on until its canvas work
+ * ends, while the next prepare may already be starting).
  */
 class SwapRenderer(private val source: CurrentWallpaperSource, private val palette: () -> CrackPalette) {
 

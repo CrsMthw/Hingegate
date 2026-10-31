@@ -12,6 +12,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.crsmthw.hingegate.domain.ActiveCrack
+import com.crsmthw.hingegate.domain.CrackSpec
 import com.crsmthw.hingegate.domain.PendingRoll
 import com.crsmthw.hingegate.domain.PostureMemory
 import kotlinx.coroutines.CancellationException
@@ -29,7 +30,8 @@ import java.io.IOException
 val Context.hingegateStore: DataStore<Preferences> by preferencesDataStore(name = "hingegate")
 
 /**
- * Settings, the miss streak, the posture memory, the active crack and the pending roll — one Preferences file
+ * Settings, the miss streak, the posture memory, the active crack, the pending roll and the pre-chosen next crack
+ * (docs/SWAP-MODE.md §10.28) — one Preferences file
  * shared with [CrackLog], [WallpaperImages] and [SwapRepository]. Reads are flows (or one-shot loads) with
  * defaults applied here; every write returns a [Result], so a full disk is reported to the caller instead of
  * crashing a binder thread.
@@ -67,6 +69,8 @@ class SettingsRepository(private val store: DataStore<Preferences>, private val 
 
     suspend fun loadPendingRoll(): PendingRoll? = decode(prefs.first()[Keys.PENDING_ROLL], PendingRoll.serializer())
 
+    suspend fun loadNextSpec(): CrackSpec? = decode(prefs.first()[Keys.NEXT_SPEC], CrackSpec.serializer())
+
     // ── Writes ──────────────────────────────────────────────────────────────
 
     suspend fun setEnabled(enabled: Boolean): Result<Unit> = write { it[Keys.ENABLED] = enabled }
@@ -87,16 +91,19 @@ class SettingsRepository(private val store: DataStore<Preferences>, private val 
 
     suspend fun savePendingRoll(pending: PendingRoll?): Result<Unit> = write { it.putPending(pending) }
 
+    suspend fun saveNextSpec(spec: CrackSpec): Result<Unit> = write { it.putNextSpec(spec) }
+
     /**
-     * One unfold's outcome in a single edit, so the streak, the consumed "next unfold" switch, the crack and the
-     * consumed pending roll can never be half-written if the process dies in between.
+     * One unfold's outcome in a single edit, so the streak, the consumed "next unfold" switch, the crack, the
+     * consumed pending roll and the next pre-chosen crack can never be half-written if the process dies in between.
      */
-    suspend fun recordUnfold(newMissStreak: Int, consumeCrackNext: Boolean, active: ActiveCrack?): Result<Unit> =
+    suspend fun recordUnfold(newMissStreak: Int, consumeCrackNext: Boolean, active: ActiveCrack?, nextSpec: CrackSpec): Result<Unit> =
         write {
             it[Keys.MISS_STREAK] = newMissStreak
             if (consumeCrackNext) it[Keys.CRACK_NEXT] = false
             it.putActive(active)
             it.putPending(null)
+            it.putNextSpec(nextSpec)
         }
 
     /** A fold in a single edit: the crack is cleared and the next unfold's roll is stored together. */
@@ -111,6 +118,10 @@ class SettingsRepository(private val store: DataStore<Preferences>, private val 
         } else {
             this[Keys.ACTIVE_CRACK] = json.encodeToString(ActiveCrack.serializer(), active)
         }
+    }
+
+    private fun MutablePreferences.putNextSpec(spec: CrackSpec) {
+        this[Keys.NEXT_SPEC] = json.encodeToString(CrackSpec.serializer(), spec)
     }
 
     private fun MutablePreferences.putPending(pending: PendingRoll?) {
@@ -148,6 +159,7 @@ class SettingsRepository(private val store: DataStore<Preferences>, private val 
         val POSTURE_MEMORY = stringPreferencesKey("posture_memory")
         val ACTIVE_CRACK = stringPreferencesKey("active_crack")
         val PENDING_ROLL = stringPreferencesKey("pending_roll")
+        val NEXT_SPEC = stringPreferencesKey("next_spec")
     }
 
     private companion object {

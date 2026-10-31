@@ -5,6 +5,7 @@ import com.crsmthw.hingegate.data.CrackLog
 import com.crsmthw.hingegate.data.SettingsRepository
 import com.crsmthw.hingegate.domain.ActiveCrack
 import com.crsmthw.hingegate.domain.CrackCause
+import com.crsmthw.hingegate.domain.CrackSpec
 import com.crsmthw.hingegate.domain.CrackTrigger
 import com.crsmthw.hingegate.domain.LogEntry
 import com.crsmthw.hingegate.domain.LogKind
@@ -34,11 +35,17 @@ import kotlin.random.Random
  * transition, or the first known posture after start-up), the next unfold's pending roll and the crack showing.
  * The Real wallpaper mode plans from this, never from the monitor's snapshot, which changes a moment before the
  * controller has handled the transition.
+ *
+ * [nextSpec] is the crack the next hit will show, chosen ahead so the Real wallpaper mode can render it while the
+ * inner screen is in use (docs/SWAP-MODE.md §10.28); null only until the stored one is restored. [epoch] counts
+ * the postures acted on, so two states either side of a quick fold-and-unfold never look alike (§10.24).
  */
 data class CrackState(
     val posture: Posture = Posture.UNKNOWN,
     val pending: PendingRoll? = null,
     val active: ActiveCrack? = null,
+    val nextSpec: CrackSpec? = null,
+    val epoch: Long = 0L,
 )
 
 /**
@@ -73,6 +80,8 @@ class CrackController(
     private var posture = Posture.UNKNOWN
     private var pending: PendingRoll? = null
     private var current: ActiveCrack? = null
+    private var nextSpec: CrackSpec? = null
+    private var epoch = 0L
 
     /** Idempotent; called from `Application.onCreate` BEFORE the monitor starts, so no transition is missed. */
     fun start() {
@@ -82,6 +91,10 @@ class CrackController(
             mutex.withLock {
                 current = settings.loadActiveCrack()
                 pending = settings.loadPendingRoll()
+                nextSpec = settings.loadNextSpec() ?: RollPlanner.newSpec(random).also {
+                    settings.saveNextSpec(it).logFailure()
+                    Log.i(DIAG_TAG, "next crack chosen: seed=${it.seed} (first start)")
+                }
                 publish()
             }
             restored.complete(Unit)
@@ -106,6 +119,7 @@ class CrackController(
             mutex.withLock {
                 if (posture == Posture.UNKNOWN) {
                     posture = first
+                    epoch++
                     keepPendingLocked()
                     publish()
                 }
@@ -162,6 +176,7 @@ class CrackController(
 
     private suspend fun onUnfold() {
         posture = Posture.UNFOLDED
+        epoch++
         val now = settings.settings.first()
         val authority = monitor.snapshot.value.authority
         if (!now.enabled) {
@@ -174,10 +189,12 @@ class CrackController(
             return
         }
         val streak = settings.missStreak.first()
+        val chosen = nextSpecLocked()
         val outcome = RollPlanner.atUnfold(
             pending,
             TriggerInput(now.chancePercent, now.guaranteeAfter, streak, now.crackNextUnfold),
             random,
+            chosen,
         )
         val result = outcome.result
         // Every unfold decides afresh: a crack left over from a fold this process never saw is replaced or cleared.
@@ -185,8 +202,12 @@ class CrackController(
         val crack = outcome.spec?.let { ActiveCrack(it, clock(), CrackCause.UNFOLD) }
         current = crack
         pending = null
+        // The pre-chosen crack is shown now: the next hit gets a new one, chosen while the inner screen is in use.
+        val next = RollPlanner.nextSpecAfter(outcome, chosen, random)
+        nextSpec = next
         publish()
-        settings.recordUnfold(result.newMissStreak, consumeCrackNext = now.crackNextUnfold, active = crack).logFailure()
+        if (outcome.consumedNext) Log.i(DIAG_TAG, "next crack chosen: seed=${next.seed} (seed ${chosen.seed} shown)")
+        settings.recordUnfold(result.newMissStreak, consumeCrackNext = now.crackNextUnfold, active = crack, nextSpec = next).logFailure()
         append(
             LogEntry(
                 timeEpochMs = clock(),
@@ -203,6 +224,7 @@ class CrackController(
 
     private suspend fun onFold() {
         posture = Posture.FOLDED
+        epoch++
         val hadCrack = current != null
         current = null
         // The decision for the next unfold, made now so the Real wallpaper mode can stage it while folded.
@@ -230,8 +252,14 @@ class CrackController(
         val now = settings.settings.first()
         if (!now.enabled) return null
         val input = TriggerInput(now.chancePercent, now.guaranteeAfter, settings.missStreak.first(), now.crackNextUnfold)
-        return pending.takeIf { RollPlanner.isCurrent(it, input) } ?: RollPlanner.preRoll(input, random)
+        return pending.takeIf { RollPlanner.isCurrent(it, input) } ?: RollPlanner.preRoll(input, random, nextSpecLocked())
     }
+
+    /**
+     * The pre-chosen next crack. Restored (or chosen) before any transition is handled; the fallback only covers
+     * a call that would otherwise have nothing, and keeps it for the next call.
+     */
+    private fun nextSpecLocked(): CrackSpec = nextSpec ?: RollPlanner.newSpec(random).also { nextSpec = it }
 
     private suspend fun clearLocked(kind: LogKind) {
         current = null
@@ -241,7 +269,7 @@ class CrackController(
     }
 
     private fun publish() {
-        _state.value = CrackState(posture, pending, current)
+        _state.value = CrackState(posture, pending, current, nextSpec, epoch)
         _active.value = current
     }
 
@@ -253,5 +281,8 @@ class CrackController(
 
     private companion object {
         const val TAG = "CrackController"
+
+        /** Diagnostics a filtered logcat capture reads alongside the Real wallpaper mode's (prefix "Hingegate"). */
+        const val DIAG_TAG = "HingegateCrack"
     }
 }

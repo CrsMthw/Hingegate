@@ -85,6 +85,7 @@ class HomeStatusTest {
         assertEquals(HomeMessage.CAPTURE_NO_SIZE, HomeMessage.forCapture(SwapFailure.NO_PANEL_SIZE))
         assertEquals(HomeMessage.CAPTURE_FAILED, HomeMessage.forCapture(SwapFailure.READ_FAILED))
         assertEquals(HomeMessage.CAPTURE_FAILED, HomeMessage.forCapture(SwapFailure.SET_FAILED))
+        assertEquals(HomeMessage.CAPTURE_FAILED, HomeMessage.forCapture(SwapFailure.CHANGED_DURING_READ))
         assertEquals(HomeMessage.CAPTURE_FAILED, HomeMessage.forCapture(null))
     }
 
