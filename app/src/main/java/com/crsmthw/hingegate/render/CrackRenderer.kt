@@ -10,6 +10,7 @@ import android.graphics.Shader
 import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.alpha
 import androidx.core.graphics.withMatrix
+import com.crsmthw.hingegate.domain.AlphaScale
 import com.crsmthw.hingegate.domain.CrackGeometry
 import com.crsmthw.hingegate.domain.CrackPrimitive
 import com.crsmthw.hingegate.domain.CrackSpec
@@ -49,7 +50,8 @@ class CrackRenderer(private val palette: CrackPalette) {
 
     /**
      * [hingeInScreen] is in the canvas's (current screen) coordinates; [appearAlpha] multiplies every alpha (the
-     * appear flicker, `CrackAppearance`).
+     * appear flicker, `CrackAppearance`); [alphaScale] too, clamped to opaque (`AlphaScale`: the overlay makes up
+     * for its translucent window with it).
      */
     fun draw(
         canvas: Canvas,
@@ -60,6 +62,7 @@ class CrackRenderer(private val palette: CrackPalette) {
         crack: CrackSpec,
         density: Float,
         appearAlpha: Float = 1f,
+        alphaScale: Float = 1f,
     ) {
         if (screenW <= 0 || screenH <= 0) return
         val (naturalW, naturalH) = PanelTransform.naturalSize(rotation, screenW.toFloat(), screenH.toFloat())
@@ -71,23 +74,24 @@ class CrackRenderer(private val palette: CrackPalette) {
         }
         matrix.setValues(PanelTransform.naturalToScreen(rotation, naturalW, naturalH).toMatrixValues())
         val alpha = appearAlpha.coerceIn(0f, 1f)
+        val scale = alphaScale.coerceAtLeast(0f)
         canvas.withMatrix(matrix) {
-            for (item in prepared) drawItem(this, item, alpha)
+            for (item in prepared) drawItem(this, item, alpha, scale)
         }
     }
 
-    private fun drawItem(canvas: Canvas, item: Prepared, appearAlpha: Float) {
+    private fun drawItem(canvas: Canvas, item: Prepared, appearAlpha: Float, scale: Float) {
         when (item) {
             is Prepared.Line -> {
                 strokePaint.strokeWidth = item.width
                 strokePaint.color = item.color
-                strokePaint.alpha = alphaOf(item.color, item.alpha * appearAlpha)
+                strokePaint.alpha = alphaOf(item.color, AlphaScale.apply(item.alpha * appearAlpha, scale))
                 canvas.drawLine(item.x0, item.y0, item.x1, item.y1, strokePaint)
             }
             is Prepared.Glow -> {
                 glowPaint.shader = item.shader
                 // With a shader set, the paint's alpha still scales the shader's output.
-                glowPaint.alpha = (item.alpha * appearAlpha * OPAQUE).roundToInt()
+                glowPaint.alpha = (AlphaScale.apply(item.alpha * appearAlpha, scale) * OPAQUE).roundToInt()
                 canvas.drawRect(item.rect, glowPaint)
                 glowPaint.shader = null
             }
@@ -98,12 +102,12 @@ class CrackRenderer(private val palette: CrackPalette) {
                     fillPaint
                 }
                 paint.color = item.color
-                paint.alpha = alphaOf(item.color, item.alpha * appearAlpha)
+                paint.alpha = alphaOf(item.color, AlphaScale.apply(item.alpha * appearAlpha, scale))
                 canvas.drawPath(item.path, paint)
             }
             is Prepared.Dot -> {
                 fillPaint.color = item.color
-                fillPaint.alpha = alphaOf(item.color, item.alpha * appearAlpha)
+                fillPaint.alpha = alphaOf(item.color, AlphaScale.apply(item.alpha * appearAlpha, scale))
                 canvas.drawCircle(item.cx, item.cy, item.radius, fillPaint)
             }
         }
@@ -119,25 +123,25 @@ class CrackRenderer(private val palette: CrackPalette) {
         is DotPrim -> Prepared.Dot(primitive.cx, primitive.cy, primitive.radiusPx, palette[primitive.color], primitive.alpha)
     }
 
-    /** The glow is axis-aligned (the band is perpendicular to the hinge): a rectangle with a gradient across it. */
+    /**
+     * The glow is axis-aligned (the band is perpendicular to the hinge): a rectangle with a gradient across it,
+     * clear over the band itself and fading from full colour at each band edge to transparent outward
+     * ([GlowPrim.stopPositions]).
+     */
     private fun prepareGlow(glow: GlowPrim): Prepared.Glow {
         val color = palette[glow.color]
-        val stops = intArrayOf(
-            ColorUtils.setAlphaComponent(color, 0),
-            ColorUtils.setAlphaComponent(color, OPAQUE / 3),
-            color,
-            ColorUtils.setAlphaComponent(color, OPAQUE / 3),
-            ColorUtils.setAlphaComponent(color, 0),
-        )
+        val clear = ColorUtils.setAlphaComponent(color, 0)
+        val stops = intArrayOf(clear, color, clear, clear, color, clear)
+        val positions = glow.stopPositions()
         val horizontal = glow.y0 == glow.y1
         val rect: RectF
         val shader: Shader
         if (horizontal) {
             rect = RectF(minOf(glow.x0, glow.x1), glow.y0 - glow.halfWidthPx, maxOf(glow.x0, glow.x1), glow.y0 + glow.halfWidthPx)
-            shader = LinearGradient(0f, rect.top, 0f, rect.bottom, stops, GLOW_POSITIONS, Shader.TileMode.CLAMP)
+            shader = LinearGradient(0f, rect.top, 0f, rect.bottom, stops, positions, Shader.TileMode.CLAMP)
         } else {
             rect = RectF(glow.x0 - glow.halfWidthPx, minOf(glow.y0, glow.y1), glow.x0 + glow.halfWidthPx, maxOf(glow.y0, glow.y1))
-            shader = LinearGradient(rect.left, 0f, rect.right, 0f, stops, GLOW_POSITIONS, Shader.TileMode.CLAMP)
+            shader = LinearGradient(rect.left, 0f, rect.right, 0f, stops, positions, Shader.TileMode.CLAMP)
         }
         return Prepared.Glow(rect, shader, glow.alpha)
     }
@@ -178,8 +182,5 @@ class CrackRenderer(private val palette: CrackPalette) {
 
     private companion object {
         const val OPAQUE = 0xFF
-
-        /** Transparent → a third → full → a third → transparent: a soft falloff without a blur filter. */
-        val GLOW_POSITIONS = floatArrayOf(0f, 0.3f, 0.5f, 0.7f, 1f)
     }
 }

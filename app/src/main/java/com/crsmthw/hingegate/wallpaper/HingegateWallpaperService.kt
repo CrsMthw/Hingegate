@@ -59,6 +59,14 @@ class HingegateWallpaperService : WallpaperService() {
         private var surfaceH = 0
         private var visible = false
 
+        // What the posted buffer shows, so a hidden engine keeps it right for its next show (DESIGN §12.2): the
+        // image slot last drawn while visible (Samsung binds one engine per panel, and while this one is hidden
+        // the posture describes the other panel), and whether the buffer holds a crack (a cleared one must not
+        // outlive a hide).
+        private var lastVisibleSlot: ImageSlot? = null
+        private var bufferHasCrack = false
+        private var shownOnce = false
+
         // At most one decoded bitmap per slot, keyed by what it was decoded for.
         private val bitmaps = HashMap<ImageSlot, Decoded>()
         private val loads = HashMap<ImageSlot, Pair<DecodeKey, Job>>()
@@ -104,12 +112,12 @@ class HingegateWallpaperService : WallpaperService() {
             // Display 0 swapping panels resizes this surface, possibly before the process configuration follows.
             container.postureMonitor.refresh()
             requestImage()
-            drawFrame()
+            drawFrame(systemAsked = true)
         }
 
         override fun onSurfaceRedrawNeeded(holder: SurfaceHolder) {
             super.onSurfaceRedrawNeeded(holder)
-            drawFrame()
+            drawFrame(systemAsked = true)
         }
 
         override fun onVisibilityChanged(visible: Boolean) {
@@ -159,12 +167,15 @@ class HingegateWallpaperService : WallpaperService() {
             return maxOf(w, h).toFloat() / minOf(w, h)
         }
 
+        /** The slot this frame draws: the current one while visible, the panel's own one while hidden. */
+        private fun frameSlot(): ImageSlot? = WallpaperChoice.frameSlot(visible, currentSlot(), lastVisibleSlot, versions.keys)
+
         /** Decodes the slot this frame needs, off the main thread, unless it is already decoded or loading. */
         private fun requestImage() {
             // A removed image is dropped right away.
             bitmaps.keys.filter { it !in versions }.forEach { slot -> bitmaps.remove(slot)?.bitmap?.recycle() }
             if (surfaceW <= 0 || surfaceH <= 0) return
-            val slot = currentSlot() ?: return
+            val slot = frameSlot() ?: return
             val version = versions[slot] ?: return
             val key = DecodeKey(slot, version, surfaceW, surfaceH)
             if (bitmaps[slot]?.key == key || loads[slot]?.first == key) return
@@ -174,26 +185,41 @@ class HingegateWallpaperService : WallpaperService() {
                 loads.remove(slot)
                 if (bitmap == null) return@launch
                 bitmaps.put(slot, Decoded(key, bitmap))?.bitmap?.recycle()
-                drawFrame()
+                // Hidden too: the image this panel shows next has just arrived.
+                drawFrame(systemAsked = true)
             }
             loads[slot] = key to job
         }
 
         // ── Drawing ──────────────────────────────────────────────────────────
 
-        private fun drawFrame() {
-            if (!visible || surfaceW <= 0 || surfaceH <= 0) return
+        /**
+         * Draws a frame while visible. While hidden (and once shown), only when the system asks ([systemAsked]) or
+         * the posted buffer still holds a cleared crack: then without the crack and with this panel's own image, so
+         * the next show never starts with a stale crack or the other panel's image (DESIGN §12.2).
+         */
+        private fun drawFrame(systemAsked: Boolean = false) {
+            if (surfaceW <= 0 || surfaceH <= 0) return
+            val staleCrack = bufferHasCrack && crackToShow() == null
+            if (!WallpaperChoice.shouldDraw(visible, systemAsked, staleCrack, shownOnce)) return
             val holder = surfaceHolder
             val canvas = lockCanvas(holder) ?: return
-            var animating = false
+            val slot = frameSlot()
+            // Null: no crack drawn (never while hidden); else whether it is still inside its appear flicker.
+            var crackAnimating: Boolean? = null
             try {
-                drawBackground(canvas)
-                animating = drawCrack(canvas)
+                drawBackground(canvas, slot)
+                if (visible) crackAnimating = drawCrack(canvas)
             } finally {
                 holder.unlockCanvasAndPost(canvas)
             }
-            // Finite: frames are requested only inside the appear flicker.
-            if (animating) {
+            bufferHasCrack = crackAnimating != null
+            if (visible) {
+                lastVisibleSlot = slot
+                shownOnce = true
+            }
+            // Finite, and only while visible: frames are requested only inside the appear flicker.
+            if (crackAnimating == true) {
                 Choreographer.getInstance().removeFrameCallback(frameCallback)
                 Choreographer.getInstance().postFrameCallback(frameCallback)
             }
@@ -211,8 +237,8 @@ class HingegateWallpaperService : WallpaperService() {
             }
         }
 
-        private fun drawBackground(canvas: Canvas) {
-            val bitmap = currentSlot()?.let { bitmaps[it]?.bitmap }
+        private fun drawBackground(canvas: Canvas, slot: ImageSlot?) {
+            val bitmap = slot?.let { bitmaps[it]?.bitmap }
             if (bitmap == null || bitmap.isRecycled) {
                 canvas.drawColor(fallbackColor)
                 return
@@ -223,15 +249,18 @@ class HingegateWallpaperService : WallpaperService() {
             canvas.drawBitmap(bitmap, src, dst, bitmapPaint)
         }
 
-        /** Returns whether the crack is still inside its appear flicker. */
-        private fun drawCrack(canvas: Canvas): Boolean {
-            val crack = when {
-                SurfaceRules.drawsCrack(CrackMode.WALLPAPER, settings, active, snapshot.posture) -> active
-                isPreview && active == null && snapshot.posture == Posture.UNFOLDED -> sampleCrack
-                else -> null
-            } ?: return false
+        /** The crack this engine shows now: the active one in this mode, or the picker preview's sample. */
+        private fun crackToShow(): ActiveCrack? = when {
+            SurfaceRules.drawsCrack(CrackMode.WALLPAPER, settings, active, snapshot.posture) -> active
+            isPreview && active == null && snapshot.posture == Posture.UNFOLDED -> sampleCrack
+            else -> null
+        }
+
+        /** Null when no crack was drawn; else whether it is still inside its appear flicker. */
+        private fun drawCrack(canvas: Canvas): Boolean? {
+            val crack = crackToShow() ?: return null
             val hinge = snapshot.hinge?.takeIf { snapshot.displayWidth == surfaceW && snapshot.displayHeight == surfaceH }
-                ?: container.postureMonitor.hingeFor(surfaceW, surfaceH)
+                ?: container.postureMonitor.hingeFor(surfaceW, surfaceH, snapshot.rotation)
             val density = (displayContext ?: this@HingegateWallpaperService).resources.displayMetrics.density
             val now = System.currentTimeMillis()
             val draw = renderer ?: CrackRenderer(container.crackPalette).also { renderer = it }

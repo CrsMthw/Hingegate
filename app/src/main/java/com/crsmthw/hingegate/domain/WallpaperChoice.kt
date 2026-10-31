@@ -46,6 +46,24 @@ object WallpaperChoice {
         return if (toCover < toInner) ImageSlot.COVER else ImageSlot.MAIN
     }
 
+    /**
+     * Whether a wallpaper engine draws a frame now (docs/DESIGN.md §12.2): always while visible; while hidden only
+     * to keep the buffer the next show starts with correct — when the system asks ([systemAsked]: the surface
+     * changed or needs a redraw) or when the posted buffer still holds a crack that should no longer show
+     * ([staleCrack]). A crack that is still active is left in a hidden buffer (the screen merely went off). An
+     * engine never shown yet ([shownOnce] false) does not draw while hidden: it cannot know which panel it is on.
+     */
+    fun shouldDraw(visible: Boolean, systemAsked: Boolean, staleCrack: Boolean, shownOnce: Boolean): Boolean =
+        visible || (shownOnce && (systemAsked || staleCrack))
+
+    /**
+     * The image a frame draws. While visible, [current] (from the posture). While hidden, the slot last drawn while
+     * visible ([lastVisible]) while it is still available: on Samsung every panel has its own engine and the
+     * posture describes the OTHER panel then, so the hidden engine must keep its own panel's image.
+     */
+    fun frameSlot(visible: Boolean, current: ImageSlot?, lastVisible: ImageSlot?, available: Set<ImageSlot>): ImageSlot? =
+        if (visible || lastVisible == null || lastVisible !in available) current else lastVisible
+
     /** The centred part of a [srcW] × [srcH] image that fills [dstW] × [dstH] without distortion. */
     fun centerCrop(srcW: Int, srcH: Int, dstW: Int, dstH: Int): CropRect {
         if (srcW <= 0 || srcH <= 0 || dstW <= 0 || dstH <= 0) return CropRect(0f, 0f, srcW.toFloat(), srcH.toFloat())

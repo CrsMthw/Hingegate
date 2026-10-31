@@ -62,11 +62,24 @@ object PanelTransform {
      */
     fun hingeToNatural(rotation: Int, screenW: Float, screenH: Float, hinge: HingeLine): HingeLine {
         val (naturalW, naturalH) = naturalSize(rotation, screenW, screenH)
-        val map = screenToNatural(rotation, naturalW, naturalH)
+        return mapLine(screenToNatural(rotation, naturalW, naturalH), screenW, screenH, hinge)
+    }
+
+    /**
+     * The inverse of [hingeToNatural]: a hinge known in the natural frame as a line on a screen currently
+     * [screenW] × [screenH] at [rotation].
+     */
+    fun hingeToScreen(rotation: Int, screenW: Float, screenH: Float, hinge: HingeLine): HingeLine {
+        val (naturalW, naturalH) = naturalSize(rotation, screenW, screenH)
+        return mapLine(naturalToScreen(rotation, naturalW, naturalH), naturalW, naturalH, hinge)
+    }
+
+    /** [hinge], a line in a [frameW] × [frameH] frame, through [map]. */
+    private fun mapLine(map: Affine, frameW: Float, frameH: Float, hinge: HingeLine): HingeLine {
         // Two points on the line, mapped: whichever coordinate they share is the line's position.
         val (x0, y0, x1, y1) = when (hinge.orientation) {
-            HingeOrientation.VERTICAL -> listOf(hinge.positionPx, 0f, hinge.positionPx, screenH)
-            HingeOrientation.HORIZONTAL -> listOf(0f, hinge.positionPx, screenW, hinge.positionPx)
+            HingeOrientation.VERTICAL -> listOf(hinge.positionPx, 0f, hinge.positionPx, frameH)
+            HingeOrientation.HORIZONTAL -> listOf(0f, hinge.positionPx, frameW, hinge.positionPx)
         }
         val nx0 = map.mapX(x0, y0)
         val nx1 = map.mapX(x1, y1)

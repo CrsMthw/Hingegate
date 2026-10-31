@@ -34,6 +34,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -74,11 +75,10 @@ fun HomeScreen(viewModel: HomeViewModel, palette: CrackPalette, modifier: Modifi
     }
 
     val snackbarHost = remember { SnackbarHostState() }
-    val saveFailed = stringResource(R.string.error_save)
-    val imageFailed = stringResource(R.string.error_image)
+    val messageText = message?.let { messageText(it) }
     LaunchedEffect(message) {
-        val shown = message ?: return@LaunchedEffect
-        snackbarHost.showSnackbar(if (shown == HomeMessage.SAVE_FAILED) saveFailed else imageFailed)
+        val text = messageText ?: return@LaunchedEffect
+        snackbarHost.showSnackbar(text)
         viewModel.messageShown()
     }
 
@@ -94,8 +94,33 @@ fun HomeScreen(viewModel: HomeViewModel, palette: CrackPalette, modifier: Modifi
         viewModel.refreshSystem()
     }
 
+    // Every permission is explained again and confirmed before Settings or the system prompt opens (§8).
+    var asking by rememberSaveable { mutableStateOf<PermissionKind?>(null) }
+    val notificationsPrompt = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+    asking?.let { kind ->
+        PermissionDialog(
+            kind = kind,
+            systemPrompt = kind == PermissionKind.NOTIFICATIONS && notificationsPrompt,
+            onContinue = {
+                asking = null
+                when (kind) {
+                    PermissionKind.ALL_FILES -> openAllFilesSettings(context)
+                    PermissionKind.OVERLAY -> openOverlaySettings(context)
+                    PermissionKind.NOTIFICATIONS -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    } else {
+                        openNotificationSettings(context)
+                    }
+                }
+            },
+            onDismiss = { asking = null },
+        )
+    }
+
     var previewSeed by rememberSaveable { mutableLongStateOf(INITIAL_PREVIEW_SEED) }
-    var flickerKey by rememberSaveable { mutableIntStateOf(0) }
+    // Not saveable: a restored key would replay the flicker on every recreation (fold, rotation, dark mode);
+    // the flicker belongs to the Shuffle tap only (DESIGN §18.9).
+    var flickerKey by remember { mutableIntStateOf(0) }
     val previewSpec = remember(previewSeed) { CrackSpecGenerator.generate(Random(previewSeed)) }
     val windowSize = LocalWindowInfo.current.containerSize
 
@@ -105,7 +130,19 @@ fun HomeScreen(viewModel: HomeViewModel, palette: CrackPalette, modifier: Modifi
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.app_name)) },
-                subtitle = { Text(statusText(HomeStatus.of(state.settings, state.active, state.snapshot.posture))) },
+                subtitle = {
+                    // Only from the stored state: the defaults would show a false status until it is read.
+                    if (state.loaded) {
+                        val ready = HomeStatus.surfaceReady(
+                            mode = state.settings.mode,
+                            canDrawOverlays = state.system.canDrawOverlays,
+                            wallpaperSet = state.system.wallpaperSet,
+                            allFilesAccess = state.system.allFilesAccess,
+                            originalCaptured = state.swap.capturedAtEpochMs != null,
+                        )
+                        Text(statusText(HomeStatus.of(state.settings, state.active, state.snapshot.posture, ready)))
+                    }
+                },
                 scrollBehavior = scrollBehavior,
             )
         },
@@ -119,7 +156,8 @@ fun HomeScreen(viewModel: HomeViewModel, palette: CrackPalette, modifier: Modifi
                 spec = previewSpec,
                 palette = palette,
                 snapshot = state.snapshot,
-                image = state.previewImage,
+                // Each mode's own background: the live wallpaper's image, or the captured real wallpaper.
+                image = if (state.settings.mode == CrackMode.SWAP) state.swap.original else state.previewImage,
                 fallbackPanelWidth = windowSize.width,
                 fallbackPanelHeight = windowSize.height,
                 flickerKey = flickerKey,
@@ -134,18 +172,13 @@ fun HomeScreen(viewModel: HomeViewModel, palette: CrackPalette, modifier: Modifi
                     CrackMode.OVERLAY -> OverlaySetup(
                         canDrawOverlays = state.system.canDrawOverlays,
                         notificationsAllowed = state.system.notificationsAllowed,
-                        serviceRunning = state.overlayRunning,
-                        onAllowOverlay = { openOverlaySettings(context) },
-                        onAllowNotifications = {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
-                            } else {
-                                openNotificationSettings(context)
-                            }
-                        },
+                        serviceRunning = state.serviceRunning,
+                        onAllowOverlay = { asking = PermissionKind.OVERLAY },
+                        onAllowNotifications = { asking = PermissionKind.NOTIFICATIONS },
                     )
                     CrackMode.WALLPAPER -> WallpaperSetup(
                         thumbnails = state.thumbnails,
+                        posture = state.snapshot.posture,
                         wallpaperSet = state.system.wallpaperSet,
                         onChoose = { slot ->
                             val request = PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
@@ -153,6 +186,19 @@ fun HomeScreen(viewModel: HomeViewModel, palette: CrackPalette, modifier: Modifi
                         },
                         onRemove = viewModel::removeImage,
                         onSetWallpaper = { openLiveWallpaperPicker(context) },
+                    )
+                    CrackMode.SWAP -> SwapSetup(
+                        allFilesAccess = state.system.allFilesAccess,
+                        isSamsung = viewModel.isSamsung,
+                        posture = state.snapshot.posture,
+                        original = state.swap.original,
+                        capturedAtEpochMs = state.swap.capturedAtEpochMs,
+                        notificationsAllowed = state.system.notificationsAllowed,
+                        serviceRunning = state.serviceRunning,
+                        onAllowAllFiles = { asking = PermissionKind.ALL_FILES },
+                        onCapture = viewModel::captureWallpaper,
+                        onRestore = viewModel::restoreWallpaper,
+                        onAllowNotifications = { asking = PermissionKind.NOTIFICATIONS },
                     )
                 }
             }
@@ -166,6 +212,7 @@ fun HomeScreen(viewModel: HomeViewModel, palette: CrackPalette, modifier: Modifi
             )
             TryItSection(
                 crackNextUnfold = state.settings.crackNextUnfold,
+                appEnabled = state.settings.enabled,
                 posture = state.snapshot.posture,
                 crackActive = state.active != null,
                 onCrackNext = viewModel::setCrackNextUnfold,
@@ -207,9 +254,31 @@ private fun statusText(status: HomeStatus): String = stringResource(
         HomeStatus.LEARNING -> R.string.status_learning
         HomeStatus.FOLDED -> R.string.status_folded
         HomeStatus.UNFOLDED_CRACKED -> R.string.status_unfolded_cracked
+        HomeStatus.UNFOLDED_CRACK_HIDDEN -> R.string.status_unfolded_hidden
         HomeStatus.UNFOLDED_CLEAN -> R.string.status_unfolded_clean
     },
 )
+
+@Composable
+private fun messageText(message: HomeMessage): String = stringResource(
+    when (message) {
+        HomeMessage.SAVE_FAILED -> R.string.error_save
+        HomeMessage.IMAGE_FAILED -> R.string.error_image
+        HomeMessage.CAPTURED -> R.string.message_captured
+        HomeMessage.CAPTURE_LIVE_WALLPAPER -> R.string.error_capture_live
+        HomeMessage.CAPTURE_NO_PERMISSION -> R.string.error_capture_permission
+        HomeMessage.CAPTURE_NOT_UNFOLDED -> R.string.error_capture_unfold
+        HomeMessage.CAPTURE_ALREADY_OURS -> R.string.error_capture_ours
+        HomeMessage.CAPTURE_NO_SIZE -> R.string.error_capture_no_size
+        HomeMessage.CAPTURE_FAILED -> R.string.error_capture_failed
+    },
+)
+
+/** Hingegate's own All files access page, else the list of all apps with that access (some builds lack the first). */
+private fun openAllFilesSettings(context: Context) {
+    val direct = Intent(SystemSettings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, "package:${context.packageName}".toUri())
+    if (!start(context, direct)) start(context, Intent(SystemSettings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+}
 
 private fun openOverlaySettings(context: Context) {
     start(context, Intent(SystemSettings.ACTION_MANAGE_OVERLAY_PERMISSION, "package:${context.packageName}".toUri()))

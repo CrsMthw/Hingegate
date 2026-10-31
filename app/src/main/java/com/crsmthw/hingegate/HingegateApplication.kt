@@ -6,7 +6,7 @@ import com.crsmthw.hingegate.di.AppContainer
 /**
  * Process entry point: builds the [AppContainer] once, before any Activity, service or wallpaper engine exists,
  * and starts watching the fold. The controller starts FIRST so it is subscribed to the monitor's transitions
- * before the monitor can emit one.
+ * before the monitor can emit one; the wallpaper swapper follows the controller.
  */
 class HingegateApplication : Application() {
 
@@ -17,6 +17,7 @@ class HingegateApplication : Application() {
         super.onCreate()
         container = AppContainer(this)
         container.crackController.start()
+        container.wallpaperSwapper.start()
         container.postureMonitor.start()
     }
 }

@@ -7,19 +7,25 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Layers
+import androidx.compose.material.icons.rounded.Photo
+import androidx.compose.material.icons.rounded.ScreenRotation
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.Wallpaper
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -36,6 +42,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ToggleButton
+import androidx.compose.material3.ToggleButtonShapes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -63,6 +70,8 @@ import com.crsmthw.hingegate.domain.LogEntry
 import com.crsmthw.hingegate.domain.LogPhrase
 import com.crsmthw.hingegate.domain.Posture
 import com.crsmthw.hingegate.domain.PostureAuthority
+import com.crsmthw.hingegate.domain.SwapFailure
+import com.crsmthw.hingegate.domain.SwapSetWording
 import com.crsmthw.hingegate.posture.PostureSnapshot
 import com.crsmthw.hingegate.render.CrackPalette
 import java.time.ZoneId
@@ -181,27 +190,46 @@ internal fun ModeSection(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     SectionCard(stringResource(R.string.mode_title), modifier) {
-        // A connected two-way choice (M3 Expressive): two toggle buttons sharing an edge, exactly one checked.
-        Row(horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween)) {
+        // A connected three-way choice (M3 Expressive): toggle buttons sharing their edges, exactly one checked.
+        // Icon above a label that wraps as needed, so the three fit side by side on the narrow cover screen too;
+        // the row's intrinsic height keeps all three as tall as the tallest label (large font sizes included).
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
+            modifier = Modifier.height(IntrinsicSize.Min),
+        ) {
             ModeButton(
                 label = stringResource(R.string.mode_overlay),
                 icon = Icons.Rounded.Layers,
                 checked = mode == CrackMode.OVERLAY,
-                leading = true,
+                shapes = ButtonGroupDefaults.connectedLeadingButtonShapes(),
                 onClick = { onMode(CrackMode.OVERLAY) },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).fillMaxHeight(),
             )
             ModeButton(
                 label = stringResource(R.string.mode_wallpaper),
                 icon = Icons.Rounded.Wallpaper,
                 checked = mode == CrackMode.WALLPAPER,
-                leading = false,
+                shapes = ButtonGroupDefaults.connectedMiddleButtonShapes(),
                 onClick = { onMode(CrackMode.WALLPAPER) },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+            )
+            ModeButton(
+                label = stringResource(R.string.mode_swap),
+                icon = Icons.Rounded.Photo,
+                checked = mode == CrackMode.SWAP,
+                shapes = ButtonGroupDefaults.connectedTrailingButtonShapes(),
+                onClick = { onMode(CrackMode.SWAP) },
+                modifier = Modifier.weight(1f).fillMaxHeight(),
             )
         }
         Text(
-            stringResource(if (mode == CrackMode.OVERLAY) R.string.mode_overlay_hint else R.string.mode_wallpaper_hint),
+            stringResource(
+                when (mode) {
+                    CrackMode.OVERLAY -> R.string.mode_overlay_hint
+                    CrackMode.WALLPAPER -> R.string.mode_wallpaper_hint
+                    CrackMode.SWAP -> R.string.mode_swap_hint
+                },
+            ),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -216,7 +244,7 @@ private fun ModeButton(
     label: String,
     icon: ImageVector,
     checked: Boolean,
-    leading: Boolean,
+    shapes: ToggleButtonShapes,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -224,16 +252,74 @@ private fun ModeButton(
         checked = checked,
         onCheckedChange = { onClick() },
         modifier = modifier.semantics { role = Role.RadioButton },
-        shapes = if (leading) {
-            ButtonGroupDefaults.connectedLeadingButtonShapes()
-        } else {
-            ButtonGroupDefaults.connectedTrailingButtonShapes()
-        },
+        shapes = shapes,
+        contentPadding = ModeButtonPadding,
     ) {
-        Icon(icon, contentDescription = null)
-        Spacer(Modifier.size(ButtonDefaults.IconSpacing))
-        Text(label, maxLines = 1)
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(icon, contentDescription = null)
+            Text(label, textAlign = TextAlign.Center)
+        }
     }
+}
+
+/**
+ * A permission with its plain-words explanation always on the card (docs/SWAP-MODE.md §8): what it is for and
+ * what it is NOT used for. Allow never opens Settings itself; it asks for the confirmation dialog first.
+ */
+@Composable
+private fun PermissionRow(
+    title: String,
+    status: String,
+    explanation: String,
+    granted: Boolean,
+    onAllow: () -> Unit,
+    optional: Boolean = false,
+) {
+    StatusRow(
+        title = title,
+        value = status,
+        action = when {
+            granted -> null
+            optional -> { { OutlinedButton(onClick = onAllow) { Text(stringResource(R.string.action_allow)) } } }
+            else -> { { Button(onClick = onAllow) { Text(stringResource(R.string.action_allow)) } } }
+        },
+    )
+    Text(explanation, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+/**
+ * The confirmation before any Settings screen or system prompt (docs/SWAP-MODE.md §8): the same explanation as on
+ * the card, what happens next, and "Continue to Settings" (or "Continue" before a system prompt) / "Not now".
+ */
+@Composable
+internal fun PermissionDialog(kind: PermissionKind, systemPrompt: Boolean, onContinue: () -> Unit, onDismiss: () -> Unit) {
+    val title = when (kind) {
+        PermissionKind.ALL_FILES -> R.string.permission_all_files_dialog_title
+        PermissionKind.OVERLAY -> R.string.permission_overlay_dialog_title
+        PermissionKind.NOTIFICATIONS -> R.string.permission_notifications_dialog_title
+    }
+    val explanation = when (kind) {
+        PermissionKind.ALL_FILES -> R.string.permission_all_files_explanation
+        PermissionKind.OVERLAY -> R.string.permission_overlay_explanation
+        PermissionKind.NOTIFICATIONS -> R.string.permission_notifications_explanation
+    }
+    val next = if (systemPrompt) R.string.permission_next_prompt else R.string.permission_next_settings
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(ItemSpacing)) {
+                Text(stringResource(explanation))
+                Text(stringResource(next))
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onContinue) {
+                Text(stringResource(if (systemPrompt) R.string.action_continue else R.string.action_continue_to_settings))
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_not_now)) } },
+    )
 }
 
 @Composable
@@ -244,19 +330,26 @@ internal fun OverlaySetup(
     onAllowOverlay: () -> Unit,
     onAllowNotifications: () -> Unit,
 ) {
-    StatusRow(
+    PermissionRow(
         title = stringResource(R.string.overlay_permission_title),
-        value = stringResource(if (canDrawOverlays) R.string.overlay_permission_granted else R.string.overlay_permission_missing),
-        action = if (canDrawOverlays) null else { { Button(onClick = onAllowOverlay) { Text(stringResource(R.string.action_allow)) } } },
+        status = stringResource(if (canDrawOverlays) R.string.permission_granted else R.string.overlay_permission_missing),
+        explanation = stringResource(R.string.permission_overlay_explanation),
+        granted = canDrawOverlays,
+        onAllow = onAllowOverlay,
     )
-    StatusRow(
+    ServiceRows(notificationsAllowed, serviceRunning, onAllowNotifications)
+}
+
+/** The optional notifications permission and the foreground service's state: shared by the two modes that use it. */
+@Composable
+private fun ServiceRows(notificationsAllowed: Boolean, serviceRunning: Boolean, onAllowNotifications: () -> Unit) {
+    PermissionRow(
         title = stringResource(R.string.notifications_title),
-        value = stringResource(if (notificationsAllowed) R.string.notifications_on else R.string.notifications_off),
-        action = if (notificationsAllowed) {
-            null
-        } else {
-            { OutlinedButton(onClick = onAllowNotifications) { Text(stringResource(R.string.action_allow)) } }
-        },
+        status = stringResource(if (notificationsAllowed) R.string.notifications_on else R.string.notifications_off),
+        explanation = stringResource(R.string.permission_notifications_explanation),
+        granted = notificationsAllowed,
+        onAllow = onAllowNotifications,
+        optional = true,
     )
     StatusRow(
         title = stringResource(R.string.service_title),
@@ -264,9 +357,115 @@ internal fun OverlaySetup(
     )
 }
 
+/**
+ * The Real wallpaper mode's setup (docs/SWAP-MODE.md §6, §8, §9): All files access explained and asked for,
+ * the captured original with "Use my current wallpaper", "Put my wallpaper back", what is not touched, and that
+ * this mode does not follow rotation.
+ */
+@Composable
+internal fun SwapSetup(
+    allFilesAccess: Boolean,
+    isSamsung: Boolean,
+    posture: Posture,
+    original: Bitmap?,
+    capturedAtEpochMs: Long?,
+    notificationsAllowed: Boolean,
+    serviceRunning: Boolean,
+    onAllowAllFiles: () -> Unit,
+    onCapture: () -> Unit,
+    onRestore: () -> Unit,
+    onAllowNotifications: () -> Unit,
+) {
+    PermissionRow(
+        title = stringResource(R.string.permission_all_files_title),
+        status = stringResource(if (allFilesAccess) R.string.permission_granted else R.string.permission_all_files_missing),
+        explanation = stringResource(R.string.permission_all_files_explanation),
+        granted = allFilesAccess,
+        onAllow = onAllowAllFiles,
+    )
+    val captured = if (capturedAtEpochMs != null) {
+        val locale = LocalConfiguration.current.locales[0]
+        val now = remember(capturedAtEpochMs) { System.currentTimeMillis() }
+        val zone = remember { ZoneId.systemDefault() }
+        stringResource(R.string.swap_original_captured, LogTime.format(capturedAtEpochMs, now, zone, locale))
+    } else {
+        stringResource(R.string.swap_original_none)
+    }
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Thumbnail(original, stringResource(R.string.swap_original_title))
+        Column(Modifier.weight(1f).padding(horizontal = ItemSpacing)) {
+            Text(stringResource(R.string.swap_original_title), style = MaterialTheme.typography.bodyLarge)
+            Text(captured, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+    val availability = CaptureAvailability.of(allFilesAccess, posture)
+    Row(horizontalArrangement = Arrangement.spacedBy(ItemSpacing), modifier = Modifier.fillMaxWidth()) {
+        Button(onClick = onCapture, enabled = availability == CaptureAvailability.READY, modifier = Modifier.weight(1f)) {
+            Text(stringResource(R.string.action_use_current_wallpaper), textAlign = TextAlign.Center)
+        }
+        OutlinedButton(onClick = onRestore, enabled = capturedAtEpochMs != null, modifier = Modifier.weight(1f)) {
+            Text(stringResource(R.string.action_put_back), textAlign = TextAlign.Center)
+        }
+    }
+    when (availability) {
+        CaptureAvailability.NEEDS_PERMISSION -> Hint(stringResource(R.string.swap_capture_needs_permission))
+        CaptureAvailability.NEEDS_UNFOLD -> Hint(stringResource(R.string.swap_capture_needs_unfold))
+        CaptureAvailability.READY -> Unit
+    }
+    // Samsung keeps a wallpaper per panel; elsewhere one home wallpaper serves both screens (docs/SWAP-MODE.md §1).
+    InfoLine(Icons.Rounded.Info, stringResource(if (isSamsung) R.string.swap_untouched_note else R.string.swap_untouched_note_shared))
+    InfoLine(Icons.Rounded.ScreenRotation, stringResource(R.string.swap_rotation_note))
+    ServiceRows(notificationsAllowed, serviceRunning, onAllowNotifications)
+}
+
+@Composable
+private fun Hint(text: String) {
+    Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+/** A short fact about the mode, with an icon in front. */
+@Composable
+private fun InfoLine(icon: ImageVector, text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(InfoIconSize))
+        Text(
+            text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f).padding(start = ItemSpacing),
+        )
+    }
+}
+
+/** A rounded square with the image cropped into it, or an image icon when there is none. */
+@Composable
+private fun Thumbnail(image: Bitmap?, description: String) {
+    Box(
+        modifier = Modifier
+            .size(ThumbnailSize)
+            .clip(MaterialTheme.shapes.medium)
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (image != null) {
+            val bitmap = remember(image) { image.asImageBitmap() }
+            Image(bitmap = bitmap, contentDescription = description, contentScale = ContentScale.Crop, modifier = Modifier.size(ThumbnailSize))
+        } else {
+            Icon(Icons.Rounded.Image, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/**
+ * The Live wallpaper mode's setup. The status speaks only about the INNER screen (where the crack shows), and
+ * only while unfolded: One UI keeps a wallpaper per panel and answers for the panel in use. "Set as wallpaper"
+ * stays available either way (the other panel or the lock screen may still need it); it is the main action only
+ * while the inner screen is known not to have it.
+ */
 @Composable
 internal fun WallpaperSetup(
     thumbnails: Map<ImageSlot, Bitmap>,
+    posture: Posture,
     wallpaperSet: Boolean,
     onChoose: (ImageSlot) -> Unit,
     onRemove: (ImageSlot) -> Unit,
@@ -274,13 +473,20 @@ internal fun WallpaperSetup(
 ) {
     ImageSlotRow(stringResource(R.string.image_main), thumbnails[ImageSlot.MAIN], { onChoose(ImageSlot.MAIN) }, { onRemove(ImageSlot.MAIN) })
     ImageSlotRow(stringResource(R.string.image_cover), thumbnails[ImageSlot.COVER], { onChoose(ImageSlot.COVER) }, { onRemove(ImageSlot.COVER) })
+    val status = WallpaperStatus.of(posture, wallpaperSet)
     StatusRow(
         title = stringResource(R.string.wallpaper_status_title),
-        value = stringResource(if (wallpaperSet) R.string.wallpaper_is_set else R.string.wallpaper_not_set),
-        action = if (wallpaperSet) {
-            null
-        } else {
+        value = stringResource(
+            when (status) {
+                WallpaperStatus.INNER_SET -> R.string.wallpaper_inner_set
+                WallpaperStatus.INNER_NOT_SET -> R.string.wallpaper_inner_not_set
+                WallpaperStatus.UNFOLD_TO_CHECK -> R.string.wallpaper_unfold_to_check
+            },
+        ),
+        action = if (status == WallpaperStatus.INNER_NOT_SET) {
             { Button(onClick = onSetWallpaper) { Text(stringResource(R.string.action_set_wallpaper)) } }
+        } else {
+            { OutlinedButton(onClick = onSetWallpaper) { Text(stringResource(R.string.action_set_wallpaper)) } }
         },
     )
 }
@@ -288,20 +494,7 @@ internal fun WallpaperSetup(
 @Composable
 private fun ImageSlotRow(label: String, thumbnail: Bitmap?, onChoose: () -> Unit, onRemove: () -> Unit, modifier: Modifier = Modifier) {
     Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            modifier = Modifier
-                .size(ThumbnailSize)
-                .clip(MaterialTheme.shapes.medium)
-                .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (thumbnail != null) {
-                val bitmap = remember(thumbnail) { thumbnail.asImageBitmap() }
-                Image(bitmap = bitmap, contentDescription = label, contentScale = ContentScale.Crop, modifier = Modifier.size(ThumbnailSize))
-            } else {
-                Icon(Icons.Rounded.Image, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
+        Thumbnail(thumbnail, label)
         Column(Modifier.weight(1f).padding(horizontal = ItemSpacing)) {
             Text(label, style = MaterialTheme.typography.bodyLarge)
             Text(
@@ -370,6 +563,7 @@ internal fun FrequencySection(
 @Composable
 internal fun TryItSection(
     crackNextUnfold: Boolean,
+    appEnabled: Boolean,
     posture: Posture,
     crackActive: Boolean,
     onCrackNext: (Boolean) -> Unit,
@@ -384,21 +578,19 @@ internal fun TryItSection(
             checked = crackNextUnfold,
             onChecked = onCrackNext,
         )
-        val unfolded = posture == Posture.UNFOLDED
+        val showNow = ShowNowAvailability.of(appEnabled, posture)
         Row(horizontalArrangement = Arrangement.spacedBy(ItemSpacing), modifier = Modifier.fillMaxWidth()) {
-            Button(onClick = onShowNow, enabled = unfolded, modifier = Modifier.weight(1f)) {
+            Button(onClick = onShowNow, enabled = showNow == ShowNowAvailability.READY, modifier = Modifier.weight(1f)) {
                 Text(stringResource(R.string.action_show_now), textAlign = TextAlign.Center)
             }
             OutlinedButton(onClick = onClear, enabled = crackActive, modifier = Modifier.weight(1f)) {
                 Text(stringResource(R.string.action_clear_crack), textAlign = TextAlign.Center)
             }
         }
-        if (!unfolded) {
-            Text(
-                stringResource(R.string.show_now_hint),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        when (showNow) {
+            ShowNowAvailability.NEEDS_SWITCH_ON -> Hint(stringResource(R.string.show_now_needs_on))
+            ShowNowAvailability.NEEDS_UNFOLD -> Hint(stringResource(R.string.show_now_hint))
+            ShowNowAvailability.READY -> Unit
         }
     }
 }
@@ -482,8 +674,36 @@ private fun logSentence(entry: LogEntry): String = when (val phrase = LogPhrase.
     LogPhrase.Folded -> stringResource(R.string.log_folded)
     LogPhrase.ShownByHand -> stringResource(R.string.log_shown_by_hand)
     LogPhrase.ClearedByHand -> stringResource(R.string.log_cleared_by_hand)
+    is LogPhrase.SwapSet -> stringResource(swapSetSentence(phrase.wording), phrase.which, phrase.id)
+    is LogPhrase.SwapCaptured -> stringResource(R.string.log_swap_captured, phrase.id)
+    is LogPhrase.SwapRecaptured -> stringResource(R.string.log_swap_recaptured, phrase.id)
+    is LogPhrase.SwapIdAdopted -> stringResource(R.string.log_swap_id_adopted, phrase.id)
+    LogPhrase.SwapStageMissed -> stringResource(R.string.log_swap_stage_missed)
+    is LogPhrase.SwapFailed -> stringResource(
+        when (phrase.failure) {
+            SwapFailure.LIVE_WALLPAPER -> R.string.log_swap_failed_live
+            SwapFailure.NO_PERMISSION -> R.string.log_swap_failed_permission
+            SwapFailure.NOT_UNFOLDED -> R.string.log_swap_failed_unfold
+            SwapFailure.ALREADY_OURS -> R.string.log_swap_failed_ours
+            SwapFailure.NO_PANEL_SIZE -> R.string.log_swap_failed_size
+            SwapFailure.READ_FAILED -> R.string.log_swap_failed_read
+            SwapFailure.SET_FAILED -> R.string.log_swap_failed_set
+        },
+    )
+}
+
+/** Each Real wallpaper set reads as: which copy, when, then the flags passed and the id returned. */
+private fun swapSetSentence(wording: SwapSetWording): Int = when (wording) {
+    SwapSetWording.STAGED_CRACKED -> R.string.log_swap_staged_cracked
+    SwapSetWording.STAGED_CLEAN -> R.string.log_swap_staged_clean
+    SwapSetWording.SET_CRACKED -> R.string.log_swap_set_cracked
+    SwapSetWording.SET_CLEAN -> R.string.log_swap_set_clean
+    SwapSetWording.LATE_CRACKED -> R.string.log_swap_late_cracked
+    SwapSetWording.RESTORED -> R.string.log_swap_restored
 }
 
 private val SectionPadding = 20.dp
 private val ItemSpacing = 12.dp
 private val ThumbnailSize = 56.dp
+private val InfoIconSize = 20.dp
+private val ModeButtonPadding = PaddingValues(horizontal = 8.dp, vertical = 12.dp)

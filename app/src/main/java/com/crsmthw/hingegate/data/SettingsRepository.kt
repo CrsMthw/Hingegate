@@ -12,6 +12,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.crsmthw.hingegate.domain.ActiveCrack
+import com.crsmthw.hingegate.domain.PendingRoll
 import com.crsmthw.hingegate.domain.PostureMemory
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
@@ -28,9 +29,10 @@ import java.io.IOException
 val Context.hingegateStore: DataStore<Preferences> by preferencesDataStore(name = "hingegate")
 
 /**
- * Settings, the miss streak, the posture memory and the active crack — one Preferences file shared with
- * [CrackLog] and [WallpaperImages]. Reads are flows (or one-shot loads) with defaults applied here; every write
- * returns a [Result], so a full disk is reported to the caller instead of crashing a binder thread.
+ * Settings, the miss streak, the posture memory, the active crack and the pending roll — one Preferences file
+ * shared with [CrackLog], [WallpaperImages] and [SwapRepository]. Reads are flows (or one-shot loads) with
+ * defaults applied here; every write returns a [Result], so a full disk is reported to the caller instead of
+ * crashing a binder thread.
  */
 class SettingsRepository(private val store: DataStore<Preferences>, private val json: Json) {
 
@@ -63,6 +65,8 @@ class SettingsRepository(private val store: DataStore<Preferences>, private val 
 
     suspend fun loadActiveCrack(): ActiveCrack? = decode(prefs.first()[Keys.ACTIVE_CRACK], ActiveCrack.serializer())
 
+    suspend fun loadPendingRoll(): PendingRoll? = decode(prefs.first()[Keys.PENDING_ROLL], PendingRoll.serializer())
+
     // ── Writes ──────────────────────────────────────────────────────────────
 
     suspend fun setEnabled(enabled: Boolean): Result<Unit> = write { it[Keys.ENABLED] = enabled }
@@ -81,22 +85,39 @@ class SettingsRepository(private val store: DataStore<Preferences>, private val 
 
     suspend fun saveActiveCrack(active: ActiveCrack?): Result<Unit> = write { it.putActive(active) }
 
+    suspend fun savePendingRoll(pending: PendingRoll?): Result<Unit> = write { it.putPending(pending) }
+
     /**
-     * One unfold's outcome in a single edit, so the streak, the consumed "next unfold" switch and the crack can
-     * never be half-written if the process dies in between.
+     * One unfold's outcome in a single edit, so the streak, the consumed "next unfold" switch, the crack and the
+     * consumed pending roll can never be half-written if the process dies in between.
      */
     suspend fun recordUnfold(newMissStreak: Int, consumeCrackNext: Boolean, active: ActiveCrack?): Result<Unit> =
         write {
             it[Keys.MISS_STREAK] = newMissStreak
             if (consumeCrackNext) it[Keys.CRACK_NEXT] = false
             it.putActive(active)
+            it.putPending(null)
         }
+
+    /** A fold in a single edit: the crack is cleared and the next unfold's roll is stored together. */
+    suspend fun recordFold(pending: PendingRoll?): Result<Unit> = write {
+        it.putActive(null)
+        it.putPending(pending)
+    }
 
     private fun MutablePreferences.putActive(active: ActiveCrack?) {
         if (active == null) {
             remove(Keys.ACTIVE_CRACK)
         } else {
             this[Keys.ACTIVE_CRACK] = json.encodeToString(ActiveCrack.serializer(), active)
+        }
+    }
+
+    private fun MutablePreferences.putPending(pending: PendingRoll?) {
+        if (pending == null) {
+            remove(Keys.PENDING_ROLL)
+        } else {
+            this[Keys.PENDING_ROLL] = json.encodeToString(PendingRoll.serializer(), pending)
         }
     }
 
@@ -126,6 +147,7 @@ class SettingsRepository(private val store: DataStore<Preferences>, private val 
         val MISS_STREAK = intPreferencesKey("miss_streak")
         val POSTURE_MEMORY = stringPreferencesKey("posture_memory")
         val ACTIVE_CRACK = stringPreferencesKey("active_crack")
+        val PENDING_ROLL = stringPreferencesKey("pending_roll")
     }
 
     private companion object {

@@ -62,23 +62,67 @@ class CrackGeometryTest {
         assertTrue(prims.last() is DotPrim)
     }
 
+    private fun bandTop(s: CrackSpec) = s.band.minOf { it.offsetDp - it.widthDp / 2f }
+
+    private fun bandBottom(s: CrackSpec) = s.band.maxOf { it.offsetDp + it.widthDp / 2f }
+
     @Test
-    fun `trails reach both ends of the hinge`() {
+    fun `trails run from the band's edges to both ends of the hinge`() {
         val s = spec()
         val prims = CrackGeometry.build(s, frameW, frameH, vertical, density).filterIsInstance<StrokePrim>()
         val trails = prims.drop(s.band.size)
         val originY = s.originAlong * frameH
         val lower = trails[0]
-        assertEquals(originY, lower.y0, 1e-2f)
+        assertEquals(originY + bandBottom(s) * density, lower.y0, 1e-2f)
         assertTrue(lower.y1 > frameH)
         assertEquals(1224f + 0.5f * density, lower.x0, 1e-3f)
         val core = trails[1]
         assertEquals(CrackColor.TRAIL_WHITE, core.color)
         assertTrue(core.widthPx < lower.widthPx)
+        assertEquals(lower.y0, core.y0, 1e-3f)
         val upper = trails[2]
         assertEquals(CrackColor.TRAIL_DARK, upper.color)
-        assertEquals(originY, upper.y0, 1e-2f)
+        assertEquals(originY + bandTop(s) * density, upper.y0, 1e-2f)
         assertTrue(upper.y1 < 0f)
+    }
+
+    @Test
+    fun `no trail crosses the band`() {
+        // A small blot inside a thick band: the trails must not cut across the band's sub-lines (crop-4-junction).
+        repeat(200) { seed ->
+            val s = CrackSpecGenerator.generate(Random(seed))
+            val prims = CrackGeometry.build(s, frameW, frameH, vertical, density).filterIsInstance<StrokePrim>()
+            val originY = s.originAlong * frameH
+            val bandTopY = originY + bandTop(s) * density
+            val bandBottomY = originY + bandBottom(s) * density
+            prims.drop(s.band.size).forEach { trail ->
+                val from = minOf(trail.y0, trail.y1)
+                val to = maxOf(trail.y0, trail.y1)
+                assertTrue(to <= bandTopY + 1e-2f || from >= bandBottomY - 1e-2f, "seed $seed: trail $from..$to crosses the band $bandTopY..$bandBottomY")
+            }
+        }
+    }
+
+    @Test
+    fun `the glow is a halo outside the band, clear inside it`() {
+        val s = spec()
+        val glow = CrackGeometry.build(s, frameW, frameH, vertical, density).first() as GlowPrim
+        val bandHalf = (bandBottom(s) - bandTop(s)) / 2f * density
+        assertEquals(s.glowDp * density, glow.haloPx, 1e-3f)
+        assertEquals(bandHalf + glow.haloPx, glow.halfWidthPx, 1e-3f)
+        val stops = glow.stopPositions()
+        val edge = glow.haloPx / (2f * glow.halfWidthPx)
+        assertEquals(listOf(0f, edge, edge, 1f - edge, 1f - edge, 1f), stops.toList())
+        // Monotonic, as a gradient needs.
+        stops.toList().zipWithNext().forEach { (a, b) -> assertTrue(a <= b) }
+    }
+
+    @Test
+    fun `glow stops stay inside the rectangle for any halo`() {
+        val wide = GlowPrim(0f, 0f, 10f, 0f, halfWidthPx = 2f, color = CrackColor.BAND_WHITE, alpha = 1f, haloPx = 10f)
+        assertEquals(listOf(0f, 0.5f, 0.5f, 0.5f, 0.5f, 1f), wide.stopPositions().toList())
+        val none = GlowPrim(0f, 0f, 10f, 0f, halfWidthPx = 0f, color = CrackColor.BAND_WHITE, alpha = 1f, haloPx = 0f)
+        assertEquals(listOf(0f, 0f, 0f, 1f, 1f, 1f), none.stopPositions().toList())
     }
 
     @Test

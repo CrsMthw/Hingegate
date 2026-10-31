@@ -40,4 +40,25 @@ class CrackAppearanceTest {
         assertFalse(CrackAppearance.isAnimating(1_000, 1_520))
         assertFalse(CrackAppearance.isAnimating(1_000, 999))
     }
+
+    @Test
+    fun `the overlay's window alpha is compensated up to full opacity`() {
+        val scale = AlphaScale.forWindow(0.8f)
+        assertEquals(1.25f, scale, 1e-4f)
+        // An element meant at 0.7 is drawn at 0.875, which the 0.8 window turns back into 0.7.
+        assertEquals(0.7f, AlphaScale.apply(0.7f, scale) * 0.8f, 1e-4f)
+        // Near-opaque elements stop at the window's ceiling.
+        assertEquals(1f, AlphaScale.apply(0.95f, scale))
+        // The flicker's dim phase keeps its proportion.
+        assertEquals(0.15f, AlphaScale.apply(0.15f, scale) * 0.8f, 1e-4f)
+    }
+
+    @Test
+    fun `an opaque or invalid window alpha needs no compensation`() {
+        assertEquals(1f, AlphaScale.forWindow(1f))
+        assertEquals(1f, AlphaScale.forWindow(0f))
+        assertEquals(1f, AlphaScale.forWindow(-0.5f))
+        assertEquals(0.5f, AlphaScale.apply(0.5f, 1f))
+        assertEquals(0f, AlphaScale.apply(-1f, 1f))
+    }
 }

@@ -4,6 +4,58 @@ All notable changes to Hingegate are recorded here. Entries are never folded or 
 
 ## Unreleased
 
+### 2026-10-31 — review fixes
+- Real wallpaper: the id the system reports after a set counts as Hingegate's copy only when it changed and is
+  not the original's, and on Samsung every set waits for the next check to confirm it — so a copy that never
+  reached the inner screen is logged as such ("the copy Hingegate set did not reach the inner screen") instead of
+  making the user's own wallpaper count as Hingegate's. A miss is not retried in a loop; a late read-back still
+  puts the clean copy back. Saved states where the original's id was wrongly remembered heal on their own.
+- Real wallpaper: an exception thrown by the system (for example One UI rejecting the inner-panel flag) is logged
+  as a failed set or read instead of crashing the app on every fold.
+- Real wallpaper: folding while a changed wallpaper is being read no longer drops the original and stops the
+  mode; nothing is staged from the old image and the new one is read at the next unfold.
+- Real wallpaper: on foldables with one wallpaper for both screens (most phones other than Samsung) the card,
+  and the README, now say that the cover screen shows the copy too; the earlier entry's "the cover screen is not
+  touched" holds for Samsung only.
+- Hinge estimate: until both screens have been seen, the inner screen is no longer taken for the cover (the
+  preview and an un-reported hinge picked the wrong axis on Fold 6 / Fold 7 before the first fold), and the
+  estimate is made in the panel's natural orientation, so it is right on a rotated screen too.
+- The look: the glow is a halo around the band (it was hidden under the cores and hazed the band's gaps); the
+  trails start at the band's edges instead of crossing its fringes beside a small blot; the overlay makes up for
+  its 0.8 window opacity, so it looks like the preview and the wallpaper modes.
+- Live wallpaper: a hidden engine never keeps a cleared crack (or the other screen's image) in its last frame,
+  so a clean unfold cannot flash an old crack.
+- UI: the Live wallpaper card speaks only about the inner screen (and asks to unfold to check), keeps "Set as
+  wallpaper" available, and follows folds; the top bar says "crack not visible: finish the setup below" when the
+  chosen mode cannot show a crack, and no status at all until the settings are read; "Show crack now" needs the
+  app switched on; the preview's flicker no longer replays after a rotation or fold; a capture refused for an
+  unknown screen size says so; mode labels wrap instead of being cut off at large font sizes.
+- Pure decisions moved out of the Android code and tested: the swapper's id rules, the put-back labelling, the
+  log sentence for each set and the streak an unfold's log line shows. 38 new JVM tests (167 in all).
+
+### 2026-10-31 — Real wallpaper mode
+- A third mode, "Real wallpaper": the user's own still wallpaper is captured (with All files access, the only way
+  Android hands it over) and, on a cracked unfold, the inner screen's home wallpaper becomes a copy of it with the
+  crack baked in; the clean copy goes back afterwards. On Samsung (one wallpaper per panel) the next unfold's copy
+  is staged while the phone is folded, using the inner-panel flag; elsewhere the crack is set at the unfold and
+  the clean copy at the fold. The lock screen and the cover screen are not touched.
+- Pre-rolling in every mode: the next unfold is decided at the fold (and again when the odds or "crack on the next
+  unfold" change while folded); the streak and the log are still written at the unfold.
+- If the user changes the wallpaper, the new one is captured before anything else; a live wallpaper or a failed
+  read makes the mode let go of the wallpaper. Hingegate's own sets are recognised by their ids, so its cracked
+  copy is never taken for a new original. Leaving the mode, switching off or "Put my wallpaper back" restores the
+  clean copy.
+- Every swap is logged with the flags passed and the id the system returned (staged ahead, set, set late, put
+  back, captured, recaptured, failed with the reason).
+- Every permission (All files access, Display over other apps, Notifications) is explained in plain words on its
+  card and again in a confirmation dialog before Settings or the system prompt opens.
+- The mode choice is three-way (Over everything / Live wallpaper / Real wallpaper); the Real wallpaper card notes
+  that this mode does not follow screen rotation. The foreground service is now `HingeWatchService` and also keeps
+  the Real wallpaper mode alive.
+- 54 new JVM tests (129 in all): pre-rolling, the swap planner, wallpaper ids, panel frames and flags, the new log
+  lines, the service rule and the capture messages. The release lint's one accepted warning is ScopedStorage on
+  MANAGE_EXTERNAL_STORAGE.
+
 ### 2026-10-31 — the app
 - Posture detection for any book or flip foldable: display-size learning (display 0 swapping panels, as on
   Samsung and Pixel) with Window Manager's FoldingFeature as the fallback, tracked per attached window and resolved

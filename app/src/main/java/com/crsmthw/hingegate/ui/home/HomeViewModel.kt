@@ -4,6 +4,7 @@ import android.app.WallpaperManager
 import android.content.ComponentName
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Environment
 import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -14,8 +15,9 @@ import com.crsmthw.hingegate.di.AppContainer
 import com.crsmthw.hingegate.domain.ActiveCrack
 import com.crsmthw.hingegate.domain.ImageSlot
 import com.crsmthw.hingegate.domain.LogEntry
-import com.crsmthw.hingegate.overlay.OverlayStarter
 import com.crsmthw.hingegate.posture.PostureSnapshot
+import com.crsmthw.hingegate.service.ServiceStarter
+import com.crsmthw.hingegate.swap.SwapException
 import com.crsmthw.hingegate.wallpaper.HingegateWallpaperService
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,6 +26,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -35,10 +38,14 @@ data class SystemStatus(
     val canDrawOverlays: Boolean = false,
     val notificationsAllowed: Boolean = false,
     val wallpaperSet: Boolean = false,
+    val allFilesAccess: Boolean = false,
 )
 
-/** A one-shot message for the snackbar. */
-enum class HomeMessage { SAVE_FAILED, IMAGE_FAILED }
+/**
+ * The Real wallpaper card: the captured original at preview size (also its thumbnail, and the preview card's
+ * background in that mode) and when it was captured (null: nothing yet).
+ */
+data class SwapUi(val capturedAtEpochMs: Long? = null, val original: Bitmap? = null)
 
 data class HomeUiState(
     val loaded: Boolean = false,
@@ -47,11 +54,12 @@ data class HomeUiState(
     val snapshot: PostureSnapshot = PostureSnapshot(),
     val log: List<LogEntry> = emptyList(),
     val system: SystemStatus = SystemStatus(),
-    val overlayRunning: Boolean = false,
+    val serviceRunning: Boolean = false,
     /** Small decodes of the two wallpaper images, for the slot rows. */
     val thumbnails: Map<ImageSlot, Bitmap> = emptyMap(),
     /** The main image at preview size (the cover one when only that is set), or null for the theme gradient. */
     val previewImage: Bitmap? = null,
+    val swap: SwapUi = SwapUi(),
 )
 
 /**
@@ -64,6 +72,9 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
     private val settingsRepository = container.settingsRepository
 
     private val system = MutableStateFlow(readSystem())
+
+    /** Samsung keeps a wallpaper per panel: the Real wallpaper card says what is (not) touched accordingly. */
+    val isSamsung: Boolean = container.wallpaperSwapper.isSamsung
 
     private val _message = MutableStateFlow<HomeMessage?>(null)
     val message: StateFlow<HomeMessage?> = _message.asStateFlow()
@@ -78,6 +89,17 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
             thumbnails to preview
         }
 
+    /** Decoded again only when a new original is captured, not on every set. */
+    private val swap: Flow<SwapUi> = container.swapRepository.state
+        .map { it.capture }
+        .distinctUntilChanged()
+        .map { capture ->
+            SwapUi(
+                capturedAtEpochMs = capture?.capturedAtEpochMs,
+                original = capture?.let { container.currentWallpaper.decodeOriginal(PREVIEW_PX, PREVIEW_PX) },
+            )
+        }
+
     private val core: Flow<HomeUiState> = combine(
         settingsRepository.settings,
         container.crackController.active,
@@ -88,17 +110,28 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         HomeUiState(loaded = true, settings = settings, active = active, snapshot = snapshot, log = log, system = system)
     }
 
-    val state: StateFlow<HomeUiState> = combine(core, container.overlayRunning, images) { base, running, (thumbs, preview) ->
-        base.copy(overlayRunning = running, thumbnails = thumbs, previewImage = preview)
+    val state: StateFlow<HomeUiState> = combine(core, container.serviceRunning, images, swap) { base, running, (thumbs, preview), swap ->
+        base.copy(serviceRunning = running, thumbnails = thumbs, previewImage = preview, swap = swap)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), HomeUiState())
 
     init {
-        // The overlay service follows the settings and the permission; starting it from here is allowed
+        // The foreground service follows the settings and the permissions; starting it from here is allowed
         // because the app is in the foreground while this screen is.
         viewModelScope.launch {
-            combine(settingsRepository.settings, system) { settings, status -> settings to status.canDrawOverlays }
+            combine(settingsRepository.settings, system) { settings, status ->
+                Triple(settings, status.canDrawOverlays, status.allFilesAccess)
+            }
                 .distinctUntilChanged()
-                .collect { (settings, _) -> OverlayStarter.sync(appContext, settings) }
+                .collect { (settings, _, _) -> ServiceStarter.sync(appContext, settings) }
+        }
+        // One UI answers "which live wallpaper is set" for the panel in use: read it again on every fold and
+        // unfold, not only on resume, so the Live wallpaper card speaks about the screen it claims to.
+        viewModelScope.launch {
+            container.postureMonitor.snapshot
+                .map { it.posture }
+                .distinctUntilChanged()
+                .drop(1)
+                .collect { system.value = readSystem() }
         }
     }
 
@@ -107,7 +140,9 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         system.value = readSystem()
         // Also re-sync when nothing changed: a service the system refused to restart in the background comes
         // back as soon as the app is opened.
-        viewModelScope.launch { OverlayStarter.sync(appContext, settingsRepository.settings.first()) }
+        viewModelScope.launch { ServiceStarter.sync(appContext, settingsRepository.settings.first()) }
+        // The user may have changed the wallpaper while the app was away (docs/SWAP-MODE.md §3).
+        container.wallpaperSwapper.recheck()
     }
 
     fun setEnabled(enabled: Boolean) = save { settingsRepository.setEnabled(enabled) }
@@ -134,6 +169,18 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
 
     fun removeImage(slot: ImageSlot) = save { container.wallpaperImages.clear(slot) }
 
+    /** "Use my current wallpaper" (docs/SWAP-MODE.md §6). */
+    fun captureWallpaper() {
+        viewModelScope.launch {
+            container.wallpaperSwapper.capture()
+                .onSuccess { _message.value = HomeMessage.CAPTURED }
+                .onFailure { _message.value = HomeMessage.forCapture((it as? SwapException)?.failure) }
+        }
+    }
+
+    /** "Put my wallpaper back". */
+    fun restoreWallpaper() = container.wallpaperSwapper.restore()
+
     fun messageShown() {
         _message.value = null
     }
@@ -148,6 +195,7 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
             canDrawOverlays = SystemSettings.canDrawOverlays(appContext),
             notificationsAllowed = NotificationManagerCompat.from(appContext).areNotificationsEnabled(),
             wallpaperSet = WallpaperManager.getInstance(appContext).wallpaperInfo?.component == ours,
+            allFilesAccess = Environment.isExternalStorageManager(),
         )
     }
 

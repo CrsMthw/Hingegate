@@ -139,15 +139,16 @@ class PostureMonitor(
     }
 
     /**
-     * The hinge for a [width] × [height] frame in the current display orientation: Window Manager's, from a
-     * qualifying source whose window has exactly that size, else the estimate. Surfaces call this with their own
+     * The hinge for a [width] × [height] frame at [rotation] (screen coordinates): Window Manager's, from a
+     * qualifying source whose window has exactly that size, else the estimate, made in the panel's natural frame
+     * (a book's hinge is vertical there, whatever way the phone is held now). Surfaces call this with their own
      * size when the snapshot was taken at a different size (its configuration had not caught up yet).
      */
-    fun hingeFor(width: Int, height: Int): HingeLine {
+    fun hingeFor(width: Int, height: Int, rotation: Int): HingeLine {
         sources.values.firstOrNull { it.qualifies && it.present && it.windowW == width && it.windowH == height }
             ?.hinge
             ?.let { return it }
-        return HingeInference.estimate(width, height, memory.coverAspect)
+        return HingeInference.estimateOnScreen(width, height, rotation, memory.coverAspect)
     }
 
     // ── Display ──────────────────────────────────────────────────────────────
@@ -246,7 +247,11 @@ class PostureMonitor(
         val sample = lastSample
         val width = sample?.logicalW ?: 0
         val height = sample?.logicalH ?: 0
-        val hinge = if (posture == Posture.UNFOLDED && width > 0 && height > 0) hingeFor(width, height) else null
+        val hinge = if (posture == Posture.UNFOLDED && width > 0 && height > 0) {
+            hingeFor(width, height, sample?.rotation ?: 0)
+        } else {
+            null
+        }
         _snapshot.value = PostureSnapshot(
             posture = posture,
             authority = authority,

@@ -25,9 +25,13 @@ data class PostureMemory(
     val wmCapable: Boolean = false,
     val lastPosture: Posture = Posture.UNKNOWN,
 ) {
-    /** long/short of the small (cover) panel, or null before it is known. */
+    /**
+     * long/short of the small (cover) panel, or null before it is known. Only once two different panels have been
+     * seen: until then the "small" panel is simply the first one seen, often the inner screen itself, whose shape
+     * would steer the hinge estimate (§5) to the wrong axis on a near-square inner screen (Fold 6, Fold 7).
+     */
     val coverAspect: Float?
-        get() = aspectOf(smallWidth, smallHeight)
+        get() = if (displayAuthoritative) aspectOf(smallWidth, smallHeight) else null
 
     /** True once the two learned areas differ enough for display size alone to decide the posture. */
     val displayAuthoritative: Boolean

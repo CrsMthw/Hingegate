@@ -4,10 +4,14 @@ import android.content.Context
 import com.crsmthw.hingegate.crack.CrackController
 import com.crsmthw.hingegate.data.CrackLog
 import com.crsmthw.hingegate.data.SettingsRepository
+import com.crsmthw.hingegate.data.SwapRepository
 import com.crsmthw.hingegate.data.WallpaperImages
 import com.crsmthw.hingegate.data.hingegateStore
 import com.crsmthw.hingegate.posture.PostureMonitor
 import com.crsmthw.hingegate.render.CrackPalette
+import com.crsmthw.hingegate.swap.CurrentWallpaperSource
+import com.crsmthw.hingegate.swap.SwapRenderer
+import com.crsmthw.hingegate.swap.WallpaperSwapper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -18,9 +22,9 @@ import kotlinx.serialization.json.Json
  * The app's object graph, built by hand: every app-scoped singleton is an eager `val`, created once in
  * `HingegateApplication.onCreate`, and the ViewModel receives what it needs through its factory.
  *
- * ONE process (docs/DESIGN.md §14): the activity, the overlay service and every wallpaper engine share this
- * container, so there is one [PostureMonitor] and one [CrackController] — the "one roll per unfold" guarantee
- * depends on it. Nothing here does I/O on the constructing (main) thread.
+ * ONE process (docs/DESIGN.md §14): the activity, the foreground service and every wallpaper engine share this
+ * container, so there is one [PostureMonitor], one [CrackController] and one [WallpaperSwapper] — the "one roll
+ * per unfold" guarantee depends on it. Nothing here does I/O on the constructing (main) thread.
  */
 class AppContainer(context: Context) {
 
@@ -46,8 +50,25 @@ class AppContainer(context: Context) {
 
     val crackController = CrackController(settingsRepository, crackLog, postureMonitor, appScope)
 
-    /** Whether the overlay's foreground service is running, for the UI's status line. Written by the service. */
-    val overlayRunning = MutableStateFlow(false)
+    val swapRepository = SwapRepository(appContext.hingegateStore, json)
+
+    val currentWallpaper = CurrentWallpaperSource(appContext)
+
+    /** The Real wallpaper mode (docs/SWAP-MODE.md §3); renders with the palette, loaded on its first set. */
+    val wallpaperSwapper = WallpaperSwapper(
+        context = appContext,
+        settings = settingsRepository,
+        store = swapRepository,
+        source = currentWallpaper,
+        renderer = SwapRenderer(currentWallpaper) { crackPalette },
+        controller = crackController,
+        monitor = postureMonitor,
+        log = crackLog,
+        scope = appScope,
+    )
+
+    /** Whether the foreground service is running, for the UI's status line. Written by the service. */
+    val serviceRunning = MutableStateFlow(false)
 
     /** Read from resources on first use, so a process started only for the boot receiver never loads it. */
     val crackPalette: CrackPalette by lazy { CrackPalette.from(appContext) }

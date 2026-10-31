@@ -5,11 +5,12 @@ import com.crsmthw.hingegate.data.CrackLog
 import com.crsmthw.hingegate.data.SettingsRepository
 import com.crsmthw.hingegate.domain.ActiveCrack
 import com.crsmthw.hingegate.domain.CrackCause
-import com.crsmthw.hingegate.domain.CrackSpecGenerator
 import com.crsmthw.hingegate.domain.CrackTrigger
-import com.crsmthw.hingegate.domain.HitReason
 import com.crsmthw.hingegate.domain.LogEntry
 import com.crsmthw.hingegate.domain.LogKind
+import com.crsmthw.hingegate.domain.PendingRoll
+import com.crsmthw.hingegate.domain.Posture
+import com.crsmthw.hingegate.domain.RollPlanner
 import com.crsmthw.hingegate.domain.Transition
 import com.crsmthw.hingegate.domain.TriggerInput
 import com.crsmthw.hingegate.posture.PostureMonitor
@@ -19,6 +20,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -28,9 +30,25 @@ import kotlinx.coroutines.sync.withLock
 import kotlin.random.Random
 
 /**
- * Owns "is a crack showing" (docs/DESIGN.md §9.2). One per process, like the monitor it listens to, so each unfold
- * is rolled exactly once however many surfaces are alive. The mode does not matter here: each surface decides for
- * itself whether it draws.
+ * The controller's whole view in one value, published under its lock: the posture it last ACTED on (a
+ * transition, or the first known posture after start-up), the next unfold's pending roll and the crack showing.
+ * The Real wallpaper mode plans from this, never from the monitor's snapshot, which changes a moment before the
+ * controller has handled the transition.
+ */
+data class CrackState(
+    val posture: Posture = Posture.UNKNOWN,
+    val pending: PendingRoll? = null,
+    val active: ActiveCrack? = null,
+)
+
+/**
+ * Owns "is a crack showing" and "will the next unfold crack" (docs/DESIGN.md §9.2, docs/SWAP-MODE.md §2). One per
+ * process, like the monitor it listens to, so each unfold is decided exactly once however many surfaces are alive.
+ * The mode does not matter here: each surface decides for itself whether it draws.
+ *
+ * Pre-rolling: while folded a [PendingRoll] for the next unfold always exists (unless the app is off) — made at
+ * the fold, at start-up, and again whenever the odds or "crack on the next unfold" change; the unfold consumes it
+ * and commits the miss streak and the log exactly as before.
  */
 class CrackController(
     private val settings: SettingsRepository,
@@ -40,21 +58,32 @@ class CrackController(
     private val random: Random = Random.Default,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
+    private val _state = MutableStateFlow(CrackState())
+    val state: StateFlow<CrackState> = _state.asStateFlow()
+
     private val _active = MutableStateFlow<ActiveCrack?>(null)
     val active: StateFlow<ActiveCrack?> = _active.asStateFlow()
 
     private val restored = CompletableDeferred<Unit>()
 
-    // Transitions, the buttons and the master switch all read-modify-write the same state across suspensions.
+    // Transitions, the buttons, the settings and the master switch all read-modify-write the same state across
+    // suspensions; every change happens under this lock and is published with publish().
     private val mutex = Mutex()
     private var started = false
+    private var posture = Posture.UNKNOWN
+    private var pending: PendingRoll? = null
+    private var current: ActiveCrack? = null
 
     /** Idempotent; called from `Application.onCreate` BEFORE the monitor starts, so no transition is missed. */
     fun start() {
         if (started) return
         started = true
         scope.launch {
-            _active.value = settings.loadActiveCrack()
+            mutex.withLock {
+                current = settings.loadActiveCrack()
+                pending = settings.loadPendingRoll()
+                publish()
+            }
             restored.complete(Unit)
         }
         // UNDISPATCHED: subscribed before start() returns; transitions wait for the restore, never act before it.
@@ -69,24 +98,52 @@ class CrackController(
                 }
             }
         }
+        // A process started with the phone already folded or unfolded sees no transition: the first known posture
+        // is adopted once (later changes always come as transitions).
+        scope.launch {
+            val first = monitor.snapshot.map { it.posture }.first { it != Posture.UNKNOWN }
+            restored.await()
+            mutex.withLock {
+                if (posture == Posture.UNKNOWN) {
+                    posture = first
+                    keepPendingLocked()
+                    publish()
+                }
+            }
+        }
+        // While folded the pending roll follows the settings: rolled again when the odds, the guarantee or "crack
+        // on the next unfold" change, dropped when the app is switched off.
+        scope.launch {
+            combine(settings.settings, settings.missStreak) { s, streak -> s to streak }
+                .distinctUntilChanged()
+                .collect {
+                    restored.await()
+                    mutex.withLock { if (keepPendingLocked()) publish() }
+                }
+        }
         // Switching the app off clears a crack that is showing.
         scope.launch {
             settings.settings.map { it.enabled }.distinctUntilChanged().collect { enabled ->
                 if (!enabled) {
                     restored.await()
-                    mutex.withLock { if (_active.value != null) clearLocked(LogKind.MANUAL_CLEAR) }
+                    mutex.withLock { if (current != null) clearLocked(LogKind.MANUAL_CLEAR) }
                 }
             }
         }
     }
 
-    /** "Show crack now": a fresh crack, regardless of the odds. */
+    /**
+     * "Show crack now": a fresh crack, regardless of the odds. Nothing while the app is switched off: no surface
+     * would draw it, and it would pop up later, the moment the app is switched on.
+     */
     fun showNow() {
         scope.launch {
             restored.await()
             mutex.withLock {
-                val crack = newCrack(CrackCause.MANUAL)
-                _active.value = crack
+                if (!settings.settings.first().enabled) return@withLock
+                val crack = ActiveCrack(RollPlanner.newSpec(random), clock(), CrackCause.MANUAL)
+                current = crack
+                publish()
                 settings.saveActiveCrack(crack).logFailure()
                 append(LogEntry(clock(), LogKind.MANUAL_SHOW, authority = monitor.snapshot.value.authority, hingeSource = hingeSource()))
             }
@@ -94,36 +151,50 @@ class CrackController(
     }
 
     fun clear() {
-        scope.launch {
-            restored.await()
-            mutex.withLock { if (_active.value != null) clearLocked(LogKind.MANUAL_CLEAR) }
-        }
+        scope.launch { clearNow() }
+    }
+
+    /** [clear], finished when it returns: the Real wallpaper's "Put my wallpaper back" runs right after it. */
+    suspend fun clearNow() {
+        restored.await()
+        mutex.withLock { if (current != null) clearLocked(LogKind.MANUAL_CLEAR) }
     }
 
     private suspend fun onUnfold() {
-        val current = settings.settings.first()
+        posture = Posture.UNFOLDED
+        val now = settings.settings.first()
         val authority = monitor.snapshot.value.authority
-        if (!current.enabled) {
+        if (!now.enabled) {
+            if (pending != null) {
+                pending = null
+                settings.savePendingRoll(null).logFailure()
+            }
+            publish()
             append(LogEntry(clock(), LogKind.UNFOLD_DISABLED, authority = authority, hingeSource = hingeSource()))
             return
         }
         val streak = settings.missStreak.first()
-        val result = CrackTrigger.decide(
-            TriggerInput(current.chancePercent, current.guaranteeAfter, streak, current.crackNextUnfold),
+        val outcome = RollPlanner.atUnfold(
+            pending,
+            TriggerInput(now.chancePercent, now.guaranteeAfter, streak, now.crackNextUnfold),
             random,
         )
+        val result = outcome.result
         // Every unfold decides afresh: a crack left over from a fold this process never saw is replaced or cleared.
-        val crack = if (result.hit) newCrack(CrackCause.UNFOLD) else null
-        _active.value = crack
-        settings.recordUnfold(result.newMissStreak, consumeCrackNext = current.crackNextUnfold, active = crack).logFailure()
+        // The crack appears NOW, whenever it was rolled, so the appear flicker plays.
+        val crack = outcome.spec?.let { ActiveCrack(it, clock(), CrackCause.UNFOLD) }
+        current = crack
+        pending = null
+        publish()
+        settings.recordUnfold(result.newMissStreak, consumeCrackNext = now.crackNextUnfold, active = crack).logFailure()
         append(
             LogEntry(
                 timeEpochMs = clock(),
                 kind = if (result.hit) LogKind.UNFOLD_HIT else LogKind.UNFOLD_MISS,
                 reason = result.reason,
                 roll = result.roll.takeIf { it != CrackTrigger.NOT_ROLLED },
-                chancePercent = current.chancePercent,
-                missStreak = if (result.reason == HitReason.MISSED) result.newMissStreak else streak,
+                chancePercent = now.chancePercent,
+                missStreak = RollPlanner.logStreak(result, streak),
                 authority = authority,
                 hingeSource = hingeSource(),
             ),
@@ -131,22 +202,47 @@ class CrackController(
     }
 
     private suspend fun onFold() {
-        if (_active.value != null) {
-            clearLocked(LogKind.FOLD_CLEARED)
-        } else {
-            append(LogEntry(clock(), LogKind.FOLD, authority = monitor.snapshot.value.authority))
-        }
+        posture = Posture.FOLDED
+        val hadCrack = current != null
+        current = null
+        // The decision for the next unfold, made now so the Real wallpaper mode can stage it while folded.
+        pending = nextPending()
+        publish()
+        settings.recordFold(pending).logFailure()
+        append(LogEntry(clock(), if (hadCrack) LogKind.FOLD_CLEARED else LogKind.FOLD, authority = monitor.snapshot.value.authority))
+    }
+
+    /**
+     * While folded: makes sure the pending roll is the right one for the current settings (rolled when missing or
+     * stale, dropped when the app is off). Returns whether it changed. Not folded: nothing to do.
+     */
+    private suspend fun keepPendingLocked(): Boolean {
+        if (posture != Posture.FOLDED) return false
+        val next = nextPending()
+        if (next == pending) return false
+        pending = next
+        settings.savePendingRoll(next).logFailure()
+        return true
+    }
+
+    /** The pending roll the current settings call for: the existing one while it is still current. */
+    private suspend fun nextPending(): PendingRoll? {
+        val now = settings.settings.first()
+        if (!now.enabled) return null
+        val input = TriggerInput(now.chancePercent, now.guaranteeAfter, settings.missStreak.first(), now.crackNextUnfold)
+        return pending.takeIf { RollPlanner.isCurrent(it, input) } ?: RollPlanner.preRoll(input, random)
     }
 
     private suspend fun clearLocked(kind: LogKind) {
-        _active.value = null
+        current = null
+        publish()
         settings.saveActiveCrack(null).logFailure()
         append(LogEntry(clock(), kind, authority = monitor.snapshot.value.authority))
     }
 
-    private fun newCrack(cause: CrackCause): ActiveCrack {
-        val spec = CrackSpecGenerator.generate(Random(random.nextLong()))
-        return ActiveCrack(spec, clock(), cause)
+    private fun publish() {
+        _state.value = CrackState(posture, pending, current)
+        _active.value = current
     }
 
     private fun hingeSource() = monitor.snapshot.value.hinge?.source

@@ -14,13 +14,26 @@ data class StrokePrim(
 ) : CrackPrimitive
 
 /**
- * A soft halo along an axis-aligned line: [color] at the centre fading to transparent [halfWidthPx] away on both
- * sides (a gradient, never a blur filter — those are slow and not supported everywhere in hardware).
+ * A soft halo around an axis-aligned band: the rectangle reaches [halfWidthPx] either side of the line, of which
+ * the outer [haloPx] on each side is the halo — [color] at the band's edge fading to transparent outward. Inside
+ * the band it is transparent, so the gaps between the band's sub-lines stay clean (a gradient, never a blur
+ * filter — those are slow and not supported everywhere in hardware).
  */
 data class GlowPrim(
     val x0: Float, val y0: Float, val x1: Float, val y1: Float,
     val halfWidthPx: Float, val color: CrackColor, val alpha: Float,
-) : CrackPrimitive
+    val haloPx: Float,
+) : CrackPrimitive {
+
+    /**
+     * The gradient's stop positions across the rectangle, for the colours transparent, colour, transparent,
+     * transparent, colour, transparent: full colour at both band edges, hard stops into the clear band.
+     */
+    fun stopPositions(): FloatArray {
+        val edge = if (halfWidthPx > 0f) (haloPx / (2f * halfWidthPx)).coerceIn(0f, 0.5f) else 0f
+        return floatArrayOf(0f, edge, edge, 1f - edge, 1f - edge, 1f)
+    }
+}
 
 /** A closed polygon `[x0, y0, x1, y1, …]`; [strokeWidthPx] 0 fills it, more strokes its outline. */
 data class PolygonPrim(
@@ -63,15 +76,16 @@ object CrackGeometry {
         val u0 = spec.originAlong * map.length
         val bandEnd = map.depth + OVERSHOOT_PX
         val out = ArrayList<CrackPrimitive>(spec.band.size + spec.blob.spikes.size + spec.blob.speckles.size + 8)
+        // The band's outer edges (dp from its centre line; negative = toward the hinge's start end).
+        val top = spec.band.minOfOrNull { it.offsetDp - it.widthDp / 2f } ?: 0f
+        val bottom = spec.band.maxOfOrNull { it.offsetDp + it.widthDp / 2f } ?: 0f
 
-        // Glow behind the whole band.
+        // Glow around the whole band.
         if (spec.glowDp > 0f && spec.band.isNotEmpty()) {
-            val top = spec.band.minOf { it.offsetDp - it.widthDp / 2f }
-            val bottom = spec.band.maxOf { it.offsetDp + it.widthDp / 2f }
             val centre = u0 + px((top + bottom) / 2f)
             val half = px((bottom - top) / 2f + spec.glowDp)
             val color = spec.band.firstOrNull { it.color in CORE_COLORS }?.color ?: CrackColor.BAND_WHITE
-            out += map.glow(centre, 0f, bandEnd, half, color, spec.glowAlpha)
+            out += map.glow(centre, 0f, bandEnd, half, color, spec.glowAlpha, px(spec.glowDp))
         }
 
         // Band sub-lines, from the blob to past the far edge.
@@ -79,17 +93,20 @@ object CrackGeometry {
             out += map.across(u0 + px(line.offsetDp), 0f, bandEnd, px(line.widthDp), line.color, line.alpha)
         }
 
-        // Lower trail: from the origin down to the far end of the hinge (plus its whiter core).
+        // Lower trail: from the band's lower edge down to the far end of the hinge (plus its whiter core). It
+        // starts at the edge, not at the origin, so it never crosses the band's fringes beside a small blot
+        // (crop-4-junction: the fringes run unbroken up to the dot).
         val lower = spec.lowerTrail
         val lowerV = px(lower.offsetDp)
-        out += map.along(lowerV, u0, map.length + OVERSHOOT_PX, px(lower.widthDp), lower.color, lower.alpha)
+        val lowerStart = u0 + px(bottom)
+        out += map.along(lowerV, lowerStart, map.length + OVERSHOOT_PX, px(lower.widthDp), lower.color, lower.alpha)
         lower.coreColor?.let { core ->
-            out += map.along(lowerV, u0, map.length + OVERSHOOT_PX, px(lower.widthDp) * TRAIL_CORE_FRACTION, core, lower.alpha)
+            out += map.along(lowerV, lowerStart, map.length + OVERSHOOT_PX, px(lower.widthDp) * TRAIL_CORE_FRACTION, core, lower.alpha)
         }
 
-        // Upper trail: from the origin up to the near end.
+        // Upper trail: from the band's upper edge up to the near end.
         spec.upperTrail?.let { upper ->
-            out += map.along(px(upper.offsetDp), u0, -OVERSHOOT_PX, px(upper.widthDp), upper.color, upper.alpha)
+            out += map.along(px(upper.offsetDp), u0 + px(top), -OVERSHOOT_PX, px(upper.widthDp), upper.color, upper.alpha)
         }
 
         // Blob: rim under the fill, then the fill, spikes and speckles.
@@ -168,7 +185,7 @@ object CrackGeometry {
         fun along(v: Float, u0: Float, u1: Float, width: Float, color: CrackColor, alpha: Float) =
             StrokePrim(x(u0, v), y(u0, v), x(u1, v), y(u1, v), width, color, alpha)
 
-        fun glow(u: Float, v0: Float, v1: Float, half: Float, color: CrackColor, alpha: Float) =
-            GlowPrim(x(u, v0), y(u, v0), x(u, v1), y(u, v1), half, color, alpha)
+        fun glow(u: Float, v0: Float, v1: Float, half: Float, color: CrackColor, alpha: Float, halo: Float) =
+            GlowPrim(x(u, v0), y(u, v0), x(u, v1), y(u, v1), half, color, alpha, halo)
     }
 }

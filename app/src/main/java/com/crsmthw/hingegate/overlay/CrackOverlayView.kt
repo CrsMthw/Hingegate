@@ -6,6 +6,7 @@ import android.util.AttributeSet
 import android.view.View
 import androidx.core.graphics.withTranslation
 import com.crsmthw.hingegate.domain.ActiveCrack
+import com.crsmthw.hingegate.domain.AlphaScale
 import com.crsmthw.hingegate.domain.CrackAppearance
 import com.crsmthw.hingegate.domain.HingeLine
 import com.crsmthw.hingegate.posture.PostureSnapshot
@@ -21,18 +22,24 @@ import com.crsmthw.hingegate.render.CrackRenderer
 class CrackOverlayView @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null) : View(context, attrs) {
 
     private var renderer: CrackRenderer? = null
-    private var hingeFor: ((Int, Int) -> HingeLine)? = null
+    private var hingeFor: ((Int, Int, Int) -> HingeLine)? = null
     private var onResize: (() -> Unit)? = null
+    private var alphaScale = 1f
     private var crack: ActiveCrack? = null
     private var snapshot: PostureSnapshot? = null
 
     // Reused every frame: onDraw must not allocate (lint DrawAllocation, and the flicker runs at display rate).
     private val location = IntArray(2)
 
-    fun bind(renderer: CrackRenderer, hingeFor: (Int, Int) -> HingeLine, onResize: () -> Unit) {
+    /**
+     * [hingeFor] gives the hinge for a (width, height, rotation) frame; [windowAlpha] is the window's own alpha,
+     * which the crack's alphas are compensated for (`AlphaScale`), so it looks as it does on the other surfaces.
+     */
+    fun bind(renderer: CrackRenderer, hingeFor: (Int, Int, Int) -> HingeLine, onResize: () -> Unit, windowAlpha: Float) {
         this.renderer = renderer
         this.hingeFor = hingeFor
         this.onResize = onResize
+        this.alphaScale = AlphaScale.forWindow(windowAlpha)
     }
 
     fun show(crack: ActiveCrack, snapshot: PostureSnapshot) {
@@ -59,15 +66,15 @@ class CrackOverlayView @JvmOverloads constructor(context: Context, attrs: Attrib
         // display extends that far beyond the view's top-left.
         val screenW = width + location[0]
         val screenH = height + location[1]
-        val hinge = snapshot.hinge?.takeIf { snapshot.displayWidth == screenW && snapshot.displayHeight == screenH }
-            ?: hingeFor?.invoke(screenW, screenH)
-            ?: return
         val rotation = display?.rotation ?: snapshot.rotation
+        val hinge = snapshot.hinge?.takeIf { snapshot.displayWidth == screenW && snapshot.displayHeight == screenH }
+            ?: hingeFor?.invoke(screenW, screenH, rotation)
+            ?: return
         val now = System.currentTimeMillis()
         val alpha = CrackAppearance.alpha(now - crack.appearedAtEpochMs)
 
         canvas.withTranslation(-location[0].toFloat(), -location[1].toFloat()) {
-            renderer.draw(this, screenW, screenH, rotation, hinge, crack.spec, resources.displayMetrics.density, alpha)
+            renderer.draw(this, screenW, screenH, rotation, hinge, crack.spec, resources.displayMetrics.density, alpha, alphaScale)
         }
 
         // Finite: frames are requested only inside the flicker's duration.

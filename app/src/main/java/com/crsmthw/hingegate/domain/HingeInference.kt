@@ -34,5 +34,18 @@ object HingeInference {
         return if (longOverShort >= FLIP_ASPECT && h > w) horizontal else vertical
     }
 
+    /**
+     * The estimate for a screen currently [screenW] × [screenH] at [rotation], made in the panel's NATURAL frame
+     * and mapped back to the screen. Without the cover's shape the rule "a book's hinge is vertical" only holds in
+     * the natural frame (a Fold 8 held at rotation 1 is 1848 × 2448 with a horizontal hinge on screen); with it the
+     * answer is the same either way.
+     */
+    fun estimateOnScreen(screenW: Int, screenH: Int, rotation: Int, coverAspect: Float?): HingeLine {
+        if (screenW <= 0 || screenH <= 0) return estimate(screenW, screenH, coverAspect)
+        val (naturalW, naturalH) = PanelTransform.naturalSize(rotation, screenW.toFloat(), screenH.toFloat())
+        val natural = estimate(naturalW.toInt(), naturalH.toInt(), coverAspect)
+        return PanelTransform.hingeToScreen(rotation, screenW.toFloat(), screenH.toFloat(), natural)
+    }
+
     private fun aspect(a: Float, b: Float): Float = maxOf(a, b) / minOf(a, b)
 }

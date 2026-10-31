@@ -3,8 +3,11 @@ package com.crsmthw.hingegate.data
 import com.crsmthw.hingegate.domain.ActiveCrack
 import com.crsmthw.hingegate.domain.Posture
 
-/** Where the crack is drawn: over every app (overlay window), or on Hingegate's own live wallpaper. */
-enum class CrackMode { OVERLAY, WALLPAPER }
+/**
+ * Where the crack is drawn: over every app (overlay window), on Hingegate's own live wallpaper, or baked into a
+ * copy of the user's own static wallpaper that is swapped in and out (docs/SWAP-MODE.md).
+ */
+enum class CrackMode { OVERLAY, WALLPAPER, SWAP }
 
 /** The user's choices. Defaults are what a fresh install shows. */
 data class Settings(
@@ -34,12 +37,20 @@ data class Settings(
     }
 }
 
-/** Pure decisions for the two display surfaces, shared by the overlay service, the wallpaper engine and the UI. */
+/** Pure decisions for the display surfaces, shared by the foreground service, the wallpaper engine and the UI. */
 object SurfaceRules {
 
-    /** The overlay service should run at all: overlay mode, switched on, and the permission granted. */
-    fun overlayShouldRun(settings: Settings, canDrawOverlays: Boolean): Boolean =
-        settings.enabled && settings.mode == CrackMode.OVERLAY && canDrawOverlays
+    /**
+     * The foreground service should run at all (docs/SWAP-MODE.md §4): switched on, and either the overlay mode
+     * with "Display over other apps" or the Real wallpaper mode with All files access. In the Real wallpaper mode
+     * it only keeps the process alive; nothing else is bound to it there.
+     */
+    fun serviceShouldRun(settings: Settings, canDrawOverlays: Boolean, allFilesAccess: Boolean): Boolean =
+        settings.enabled && when (settings.mode) {
+            CrackMode.OVERLAY -> canDrawOverlays
+            CrackMode.SWAP -> allFilesAccess
+            CrackMode.WALLPAPER -> false
+        }
 
     /** A surface in [mode] draws the crack: its mode is selected, the app is on, a crack is active, unfolded. */
     fun drawsCrack(mode: CrackMode, settings: Settings, active: ActiveCrack?, posture: Posture): Boolean =

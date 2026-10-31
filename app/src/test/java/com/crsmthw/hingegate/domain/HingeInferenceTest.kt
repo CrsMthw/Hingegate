@@ -49,4 +49,41 @@ class HingeInferenceTest {
     @Test
     fun `flip held sideways without cover info crosses its long axis`() =
         assertHinge(HingeOrientation.VERTICAL, 1320f, HingeInference.estimate(2640, 1080, null))
+
+    // ── On a rotated screen, estimated in the natural frame ─────────────────
+
+    @Test
+    fun `fold 6 without cover info at rotation 0`() =
+        assertHinge(HingeOrientation.VERTICAL, 928f, HingeInference.estimateOnScreen(1856, 2160, 0, null))
+
+    @Test
+    fun `fold 6 without cover info at rotation 1 is horizontal on screen`() =
+        assertHinge(HingeOrientation.HORIZONTAL, 928f, HingeInference.estimateOnScreen(2160, 1856, 1, null))
+
+    @Test
+    fun `fold 8 without cover info at rotation 1 is horizontal on screen`() =
+        assertHinge(HingeOrientation.HORIZONTAL, 1224f, HingeInference.estimateOnScreen(1848, 2448, 1, null))
+
+    @Test
+    fun `fold 8 without cover info at rotation 3 is horizontal on screen`() =
+        assertHinge(HingeOrientation.HORIZONTAL, 1224f, HingeInference.estimateOnScreen(1848, 2448, 3, null))
+
+    @Test
+    fun `with the cover known the natural-frame estimate agrees with the plain one`() {
+        val cover = aspect(1248, 1972)
+        assertHinge(HingeOrientation.VERTICAL, 1224f, HingeInference.estimateOnScreen(2448, 1848, 0, cover))
+        assertHinge(HingeOrientation.HORIZONTAL, 1224f, HingeInference.estimateOnScreen(1848, 2448, 1, cover))
+        val fold6Cover = aspect(968, 2376)
+        assertHinge(HingeOrientation.HORIZONTAL, 928f, HingeInference.estimateOnScreen(2160, 1856, 1, fold6Cover))
+    }
+
+    @Test
+    fun `a flip held sideways without cover info still crosses its long axis`() =
+        assertHinge(HingeOrientation.VERTICAL, 1320f, HingeInference.estimateOnScreen(2640, 1080, 1, null))
+
+    @Test
+    fun `the fold 6's inner screen taken for its cover would pick the wrong axis`() {
+        // Why the cover's shape is only used once two panels are known (PostureMemory.coverAspect).
+        assertHinge(HingeOrientation.HORIZONTAL, 1080f, HingeInference.estimate(1856, 2160, aspect(1856, 2160)))
+    }
 }

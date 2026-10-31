@@ -184,4 +184,12 @@ class PostureResolverTest {
         m = PostureResolver.onDisplay(m, cover, coverW, coverH).memory
         assertEquals(1972f / 1248f, m.coverAspect!!, 1e-4f)
     }
+
+    @Test
+    fun `no cover aspect while only one panel has been seen`() {
+        // Installed and opened unfolded: the inner screen is the only panel seen, and is not the cover.
+        val m = PostureResolver.onDisplay(PostureMemory(), inner, innerW, innerH).memory
+        assertNull(m.coverAspect)
+        assertNull(PostureResolver.onDisplay(PostureMemory(), cover, coverW, coverH).memory.coverAspect)
+    }
 }

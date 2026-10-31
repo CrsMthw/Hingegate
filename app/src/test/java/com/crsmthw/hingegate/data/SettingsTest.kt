@@ -41,11 +41,24 @@ class SettingsTest {
     }
 
     @Test
-    fun `overlay runs only in overlay mode, switched on, with the permission`() {
-        assertTrue(SurfaceRules.overlayShouldRun(Settings(), canDrawOverlays = true))
-        assertFalse(SurfaceRules.overlayShouldRun(Settings(), canDrawOverlays = false))
-        assertFalse(SurfaceRules.overlayShouldRun(Settings(enabled = false), canDrawOverlays = true))
-        assertFalse(SurfaceRules.overlayShouldRun(Settings(mode = CrackMode.WALLPAPER), canDrawOverlays = true))
+    fun `the service runs in overlay mode with the overlay permission`() {
+        assertTrue(SurfaceRules.serviceShouldRun(Settings(), canDrawOverlays = true, allFilesAccess = false))
+        assertFalse(SurfaceRules.serviceShouldRun(Settings(), canDrawOverlays = false, allFilesAccess = true))
+        assertFalse(SurfaceRules.serviceShouldRun(Settings(enabled = false), canDrawOverlays = true, allFilesAccess = true))
+    }
+
+    @Test
+    fun `the service runs in the real wallpaper mode with all files access`() {
+        val swap = Settings(mode = CrackMode.SWAP)
+        assertTrue(SurfaceRules.serviceShouldRun(swap, canDrawOverlays = false, allFilesAccess = true))
+        assertFalse(SurfaceRules.serviceShouldRun(swap, canDrawOverlays = true, allFilesAccess = false))
+        assertFalse(SurfaceRules.serviceShouldRun(swap.copy(enabled = false), canDrawOverlays = true, allFilesAccess = true))
+    }
+
+    @Test
+    fun `the live wallpaper mode never needs the service`() {
+        val wallpaper = Settings(mode = CrackMode.WALLPAPER)
+        assertFalse(SurfaceRules.serviceShouldRun(wallpaper, canDrawOverlays = true, allFilesAccess = true))
     }
 
     @Test
@@ -53,6 +66,7 @@ class SettingsTest {
         val s = Settings()
         assertTrue(SurfaceRules.drawsCrack(CrackMode.OVERLAY, s, crack, Posture.UNFOLDED))
         assertFalse(SurfaceRules.drawsCrack(CrackMode.WALLPAPER, s, crack, Posture.UNFOLDED))
+        assertFalse(SurfaceRules.drawsCrack(CrackMode.OVERLAY, s.copy(mode = CrackMode.SWAP), crack, Posture.UNFOLDED))
         assertFalse(SurfaceRules.drawsCrack(CrackMode.OVERLAY, s, crack, Posture.FOLDED))
         assertFalse(SurfaceRules.drawsCrack(CrackMode.OVERLAY, s, crack, Posture.UNKNOWN))
         assertFalse(SurfaceRules.drawsCrack(CrackMode.OVERLAY, s, null, Posture.UNFOLDED))

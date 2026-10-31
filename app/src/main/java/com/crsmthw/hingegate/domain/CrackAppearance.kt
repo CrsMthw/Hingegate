@@ -32,3 +32,18 @@ object CrackAppearance {
         return elapsed in 0 until DURATION_MS
     }
 }
+
+/**
+ * Compensates a translucent window (docs/DESIGN.md §11): the overlay window is capped at the system's
+ * touch-through opacity (0.8), which would otherwise multiply every one of the crack's photo-tuned alphas. The
+ * renderer multiplies each element's alpha by [forWindow]'s scale and clamps it with [apply], so an element meant
+ * at 0.7 shows at 0.7 and only the near-opaque ones stop at the window's ceiling.
+ */
+object AlphaScale {
+
+    /** The scale that undoes a window alpha of [windowAlpha]; 1 for an opaque (or invalid) window alpha. */
+    fun forWindow(windowAlpha: Float): Float = if (windowAlpha > 0f && windowAlpha < 1f) 1f / windowAlpha else 1f
+
+    /** [alpha] (the spec's, times the flicker's) scaled by [scale], kept inside 0..1. */
+    fun apply(alpha: Float, scale: Float): Float = (alpha * scale).coerceIn(0f, 1f)
+}

@@ -2,11 +2,11 @@
 <resources>
     <string name="app_name">Hingegate</string>
 
-    <!-- Overlay service notification -->
-    <string name="overlay_channel_name">Crack overlay</string>
-    <string name="overlay_channel_description">Shown while Hingegate waits to crack the screen on an unfold</string>
-    <string name="overlay_notification_title">Hingegate is ready</string>
-    <string name="overlay_notification_text">The crack may appear when you unfold the phone</string>
+    <!-- Foreground service notification (Over everything and Real wallpaper) -->
+    <string name="service_channel_name">Hingegate running</string>
+    <string name="service_channel_description">Shown while Hingegate watches the fold for the next unfold</string>
+    <string name="service_notification_title">Hingegate is running</string>
+    <string name="service_notification_text">The crack may appear when you unfold the phone</string>
 
     <!-- Live wallpaper picker -->
     <string name="wallpaper_author">CrsMthw</string>
@@ -17,6 +17,7 @@
     <string name="status_learning">Learning your screens: fold and unfold once</string>
     <string name="status_folded">Folded</string>
     <string name="status_unfolded_cracked">Unfolded · crack showing</string>
+    <string name="status_unfolded_hidden">Unfolded · crack not visible: finish the setup below</string>
     <string name="status_unfolded_clean">Unfolded · no crack</string>
 
     <!-- Preview -->
@@ -32,13 +33,31 @@
     <!-- Mode -->
     <string name="mode_title">Where the crack shows</string>
     <string name="mode_overlay">Over everything</string>
-    <string name="mode_wallpaper">Wallpaper</string>
+    <string name="mode_wallpaper">Live wallpaper</string>
+    <string name="mode_swap">Real wallpaper</string>
     <string name="mode_overlay_hint">Drawn over every app, like a real defect. Your wallpaper stays as it is.</string>
     <string name="mode_wallpaper_hint">Drawn on Hingegate\'s own live wallpaper, under your icons. No permission needed.</string>
+    <string name="mode_swap_hint">Your own wallpaper, swapped for a cracked copy of it on the inner screen and put back after. Needs a still (not live) wallpaper.</string>
+
+    <!-- Permissions: explained on the card and again before Settings or the system prompt opens -->
+    <string name="action_allow">Allow</string>
+    <string name="permission_granted">Allowed</string>
+    <string name="action_continue_to_settings">Continue to Settings</string>
+    <string name="action_continue">Continue</string>
+    <string name="action_not_now">Not now</string>
+    <string name="permission_next_settings">Settings opens next. Turn it on for Hingegate, then come back.</string>
+    <string name="permission_next_prompt">Android asks you next. If it doesn\'t ask (or you say no), Hingegate\'s notification settings open instead.</string>
+    <string name="permission_all_files_title">All files access</string>
+    <string name="permission_all_files_missing">Needed to read your current wallpaper</string>
+    <string name="permission_all_files_explanation">Android only gives an app your current wallpaper image if it has All files access. Hingegate uses it only to read your current wallpaper, so it can show the same picture with a crack and put the original back. It never reads, changes or uploads any other file, and the app has no internet access.</string>
+    <string name="permission_all_files_dialog_title">Allow All files access?</string>
+    <string name="permission_overlay_explanation">Needed to draw the crack on top of other apps. The crack window ignores touches, so your taps go through to the app underneath. Nothing on your screen is read.</string>
+    <string name="permission_overlay_dialog_title">Allow Display over other apps?</string>
+    <string name="permission_notifications_explanation">Optional. Only used to show the \"Hingegate is running\" notice of the background service. Hingegate works without it.</string>
+    <string name="permission_notifications_dialog_title">Allow notifications?</string>
 
     <!-- Overlay setup -->
     <string name="overlay_permission_title">Display over other apps</string>
-    <string name="overlay_permission_granted">Allowed</string>
     <string name="overlay_permission_missing">Needed to draw the crack over other apps</string>
     <string name="notifications_title">Notifications</string>
     <string name="notifications_on">On</string>
@@ -46,7 +65,6 @@
     <string name="service_title">Background service</string>
     <string name="service_running">Running</string>
     <string name="service_stopped">Not running</string>
-    <string name="action_allow">Allow</string>
 
     <!-- Wallpaper setup -->
     <string name="image_main">Main screen</string>
@@ -56,9 +74,22 @@
     <string name="action_choose">Choose</string>
     <string name="action_remove">Remove</string>
     <string name="wallpaper_status_title">Live wallpaper</string>
-    <string name="wallpaper_is_set">Hingegate is your wallpaper</string>
-    <string name="wallpaper_not_set">Not set yet</string>
+    <string name="wallpaper_inner_set">Hingegate is the inner screen\'s wallpaper</string>
+    <string name="wallpaper_inner_not_set">Not the inner screen\'s wallpaper yet</string>
+    <string name="wallpaper_unfold_to_check">Unfold the phone to check and set the inner screen\'s wallpaper: the crack shows there</string>
     <string name="action_set_wallpaper">Set as wallpaper</string>
+
+    <!-- Real wallpaper setup -->
+    <string name="swap_original_title">Your wallpaper</string>
+    <string name="swap_original_none">Not captured yet</string>
+    <string name="swap_original_captured">Captured %1$s</string>
+    <string name="action_use_current_wallpaper">Use my current wallpaper</string>
+    <string name="action_put_back">Put my wallpaper back</string>
+    <string name="swap_capture_needs_permission">Allow All files access first, then use your current wallpaper.</string>
+    <string name="swap_capture_needs_unfold">Unfold the phone first: the inner screen\'s wallpaper is the one used.</string>
+    <string name="swap_untouched_note">Only the inner screen\'s home screen wallpaper changes. The lock screen and the cover screen are not touched.</string>
+    <string name="swap_untouched_note_shared">This phone has one home screen wallpaper for both screens, so the cover screen shows Hingegate\'s copy too. The lock screen is not touched.</string>
+    <string name="swap_rotation_note">This mode doesn\'t follow screen rotation: the crack is drawn for the way your phone opens.</string>
 
     <!-- How often -->
     <string name="frequency_title">How often</string>
@@ -77,6 +108,7 @@
     <string name="crack_next_summary">Whatever the odds, once</string>
     <string name="action_show_now">Show crack now</string>
     <string name="show_now_hint">Unfold the phone to show a crack now</string>
+    <string name="show_now_needs_on">Switch on Crack on unfold first</string>
     <string name="action_clear_crack">Clear crack</string>
 
     <!-- Detection -->
@@ -113,8 +145,32 @@
     <string name="log_folded">Folded</string>
     <string name="log_shown_by_hand">Crack shown by hand</string>
     <string name="log_cleared_by_hand">Crack cleared by hand</string>
+    <string name="log_swap_staged_cracked">Real wallpaper — cracked copy staged for the next unfold (flags: %1$d, id: %2$d)</string>
+    <string name="log_swap_staged_clean">Real wallpaper — clean copy staged for the next unfold (flags: %1$d, id: %2$d)</string>
+    <string name="log_swap_set_cracked">Real wallpaper — cracked copy set (flags: %1$d, id: %2$d)</string>
+    <string name="log_swap_set_clean">Real wallpaper — clean copy set (flags: %1$d, id: %2$d)</string>
+    <string name="log_swap_late_cracked">Real wallpaper — cracked copy set late, after the unfold (flags: %1$d, id: %2$d)</string>
+    <string name="log_swap_restored">Real wallpaper — your wallpaper put back (flags: %1$d, id: %2$d)</string>
+    <string name="log_swap_captured">Real wallpaper — your wallpaper captured (id: %1$d)</string>
+    <string name="log_swap_recaptured">Real wallpaper — you changed your wallpaper; the new one is captured (id: %1$d)</string>
+    <string name="log_swap_id_adopted">Real wallpaper — the system reports Hingegate\'s copy under another id (id: %1$d)</string>
+    <string name="log_swap_stage_missed">Real wallpaper — the copy Hingegate set did not reach the inner screen: your own wallpaper still shows there</string>
+    <string name="log_swap_failed_live">Real wallpaper — stopped: a live wallpaper is set</string>
+    <string name="log_swap_failed_permission">Real wallpaper — stopped: All files access is off</string>
+    <string name="log_swap_failed_unfold">Real wallpaper — the phone folded while reading the wallpaper</string>
+    <string name="log_swap_failed_ours">Real wallpaper — the wallpaper is already Hingegate\'s copy</string>
+    <string name="log_swap_failed_size">Real wallpaper — the inner screen\'s size is not known yet</string>
+    <string name="log_swap_failed_read">Real wallpaper — could not read the wallpaper</string>
+    <string name="log_swap_failed_set">Real wallpaper — the system refused the new wallpaper</string>
 
     <!-- Errors -->
     <string name="error_save">Could not save the change</string>
     <string name="error_image">Could not use that image</string>
+    <string name="message_captured">Your wallpaper is captured</string>
+    <string name="error_capture_live">A live wallpaper is set: set a still wallpaper first</string>
+    <string name="error_capture_permission">Allow All files access first</string>
+    <string name="error_capture_unfold">Unfold the phone first</string>
+    <string name="error_capture_ours">That is already Hingegate\'s copy of your wallpaper</string>
+    <string name="error_capture_no_size">The inner screen\'s size isn\'t known yet: try again in a moment</string>
+    <string name="error_capture_failed">Could not read your wallpaper</string>
 </resources>

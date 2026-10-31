@@ -2,7 +2,9 @@ package com.crsmthw.hingegate.domain
 
 import org.junit.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class WallpaperChoiceTest {
 
@@ -60,5 +62,27 @@ class WallpaperChoiceTest {
         assertEquals(1, WallpaperChoice.sampleSize(4000, 2000, 1000, 2000))
         assertEquals(3, WallpaperChoice.sampleSize(7344, 5544, 2448, 1848))
         assertEquals(1, WallpaperChoice.sampleSize(10, 10, 0, 0))
+    }
+
+    @Test
+    fun `a hidden engine draws only to keep its buffer right`() {
+        assertTrue(WallpaperChoice.shouldDraw(visible = true, systemAsked = false, staleCrack = false, shownOnce = false))
+        assertFalse(WallpaperChoice.shouldDraw(visible = false, systemAsked = false, staleCrack = false, shownOnce = true))
+        // The system asks (surface changed or redraw needed), or a cleared crack must not survive the hide.
+        assertTrue(WallpaperChoice.shouldDraw(visible = false, systemAsked = true, staleCrack = false, shownOnce = true))
+        assertTrue(WallpaperChoice.shouldDraw(visible = false, systemAsked = false, staleCrack = true, shownOnce = true))
+        // Never shown yet (bound while its panel is dark): it cannot know its panel's image, so it waits.
+        assertFalse(WallpaperChoice.shouldDraw(visible = false, systemAsked = true, staleCrack = false, shownOnce = false))
+    }
+
+    @Test
+    fun `a hidden engine keeps the image of the panel it was last shown on`() {
+        // The inner panel's engine, hidden after a fold: the posture already says COVER, it keeps MAIN.
+        assertEquals(ImageSlot.MAIN, WallpaperChoice.frameSlot(false, ImageSlot.COVER, ImageSlot.MAIN, both))
+        assertEquals(ImageSlot.COVER, WallpaperChoice.frameSlot(true, ImageSlot.COVER, ImageSlot.MAIN, both))
+        // Never shown yet, or its image was removed: the current choice.
+        assertEquals(ImageSlot.COVER, WallpaperChoice.frameSlot(false, ImageSlot.COVER, null, both))
+        assertEquals(ImageSlot.COVER, WallpaperChoice.frameSlot(false, ImageSlot.COVER, ImageSlot.MAIN, setOf(ImageSlot.COVER)))
+        assertNull(WallpaperChoice.frameSlot(true, null, ImageSlot.MAIN, emptySet()))
     }
 }

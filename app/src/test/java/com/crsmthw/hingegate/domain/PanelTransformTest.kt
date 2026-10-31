@@ -95,4 +95,26 @@ class PanelTransformTest {
         assertEquals(HingeOrientation.HORIZONTAL, natural3.orientation)
         assertEquals(h - 924f, natural3.positionPx, 1e-3f)
     }
+
+    @Test
+    fun `a hinge mapped to the screen and back is the same natural hinge`() {
+        val natural = HingeLine(HingeOrientation.VERTICAL, 1000f, 4f, HingeSource.ESTIMATED)
+        for (r in 0..3) {
+            val (screenW, screenH) = if (r % 2 == 1) h to w else w to h
+            val onScreen = PanelTransform.hingeToScreen(r, screenW, screenH, natural)
+            assertEquals(if (r % 2 == 1) HingeOrientation.HORIZONTAL else HingeOrientation.VERTICAL, onScreen.orientation)
+            assertEquals(natural, PanelTransform.hingeToNatural(r, screenW, screenH, onScreen))
+        }
+    }
+
+    @Test
+    fun `a natural vertical hinge lands where the rotation puts it`() {
+        val natural = HingeLine(HingeOrientation.VERTICAL, 1000f, 0f, HingeSource.ESTIMATED)
+        // r=1: (x, y) -> (y, W - x), so x = 1000 becomes the screen line y = 2448 - 1000.
+        assertEquals(w - 1000f, PanelTransform.hingeToScreen(1, h, w, natural).positionPx, 1e-3f)
+        // r=2: (W - x, H - y).
+        assertEquals(w - 1000f, PanelTransform.hingeToScreen(2, w, h, natural).positionPx, 1e-3f)
+        // r=3: (H - y, x), so x = 1000 stays y = 1000.
+        assertEquals(1000f, PanelTransform.hingeToScreen(3, h, w, natural).positionPx, 1e-3f)
+    }
 }

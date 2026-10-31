@@ -1,6 +1,7 @@
-package com.crsmthw.hingegate.overlay
+package com.crsmthw.hingegate.service
 
 import android.app.ForegroundServiceStartNotAllowedException
+import android.app.Notification
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -26,6 +27,7 @@ import com.crsmthw.hingegate.data.Settings
 import com.crsmthw.hingegate.data.SurfaceRules
 import com.crsmthw.hingegate.di.AppContainer
 import com.crsmthw.hingegate.domain.ActiveCrack
+import com.crsmthw.hingegate.overlay.CrackOverlayView
 import com.crsmthw.hingegate.posture.PostureSnapshot
 import com.crsmthw.hingegate.render.CrackRenderer
 import kotlinx.coroutines.flow.combine
@@ -33,11 +35,14 @@ import kotlinx.coroutines.launch
 import android.provider.Settings as SystemSettings
 
 /**
- * The overlay mode (docs/DESIGN.md §11): a `specialUse` foreground service that keeps the process alive and, only
- * while a crack is showing on the unfolded screen, adds a full-display overlay window that draws it. No idle
- * window: when there is nothing to show, there is no window at all.
+ * The one foreground service (`specialUse`), for the two modes nothing else keeps alive (docs/DESIGN.md §11,
+ * docs/SWAP-MODE.md §4):
+ * - **Over everything**: only while a crack is showing on the unfolded screen, it adds a full-display overlay
+ *   window that draws it. No idle window: with nothing to show, there is no window at all.
+ * - **Real wallpaper**: it only keeps the process (and so the wallpaper swapper) alive across folds; no window.
+ * (The live wallpaper is bound by the system and needs no service.)
  */
-class CrackOverlayService : LifecycleService() {
+class HingeWatchService : LifecycleService() {
 
     private lateinit var container: AppContainer
     private var windowContext: Context? = null
@@ -49,16 +54,7 @@ class CrackOverlayService : LifecycleService() {
     override fun onCreate() {
         super.onCreate()
         container = (application as HingegateApplication).container
-        val display = getSystemService(DisplayManager::class.java)?.getDisplay(Display.DEFAULT_DISPLAY)
-        if (display != null) {
-            // A window context of the overlay type: its configuration follows the display (not the process), it
-            // is the UI context Window Manager needs, and overlay windows are added through it.
-            val context = createWindowContext(display, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
-            windowContext = context
-            windowManager = context.getSystemService(WindowManager::class.java)
-            attachment = container.postureMonitor.attach(context)
-        }
-        container.overlayRunning.value = true
+        container.serviceRunning.value = true
         lifecycleScope.launch {
             combine(
                 container.settingsRepository.settings,
@@ -82,18 +78,26 @@ class CrackOverlayService : LifecycleService() {
 
     override fun onDestroy() {
         removeView()
-        attachment?.close()
-        attachment = null
-        container.overlayRunning.value = false
+        releaseWindowContext()
+        container.serviceRunning.value = false
         super.onDestroy()
     }
 
     private fun render(frame: Frame) {
-        if (!SurfaceRules.overlayShouldRun(frame.settings, SystemSettings.canDrawOverlays(this))) {
+        if (!ServiceStarter.shouldRun(this, frame.settings)) {
             removeView()
             stopSelf()
             return
         }
+        val overlayMode = frame.settings.mode == CrackMode.OVERLAY && SystemSettings.canDrawOverlays(this)
+        if (!overlayMode) {
+            // The Real wallpaper mode draws nothing here; the overlay's window context goes with the mode.
+            removeView()
+            releaseWindowContext()
+            return
+        }
+        // Created while the overlay mode is on (it is the posture monitor's Window Manager source then, too).
+        ensureWindowContext()
         val active = frame.active
         if (active != null && SurfaceRules.drawsCrack(CrackMode.OVERLAY, frame.settings, active, frame.snapshot.posture)) {
             ensureView()?.show(active, frame.snapshot)
@@ -102,19 +106,50 @@ class CrackOverlayService : LifecycleService() {
         }
     }
 
+    /**
+     * A window context of the overlay type: its configuration follows the display (not the process), it is the
+     * UI context Window Manager needs, and overlay windows are added through it. Only created with "Display over
+     * other apps" granted: the system may refuse an overlay window context without it.
+     */
+    private fun ensureWindowContext() {
+        if (windowContext != null) return
+        val display = getSystemService(DisplayManager::class.java)?.getDisplay(Display.DEFAULT_DISPLAY) ?: return
+        val context = try {
+            createWindowContext(display, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
+        } catch (e: UnsupportedOperationException) {
+            Log.w(TAG, "Overlay window context refused", e)
+            return
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Overlay window context not allowed", e)
+            return
+        }
+        windowContext = context
+        windowManager = context.getSystemService(WindowManager::class.java)
+        attachment = container.postureMonitor.attach(context)
+    }
+
+    private fun releaseWindowContext() {
+        attachment?.close()
+        attachment = null
+        windowManager = null
+        windowContext = null
+    }
+
     private fun ensureView(): CrackOverlayView? {
         view?.let { return it }
         val context = windowContext ?: return null
         val manager = windowManager ?: return null
+        val params = layoutParams(context)
         val created = CrackOverlayView(context).apply {
             bind(
                 renderer = renderer ?: CrackRenderer(container.crackPalette).also { renderer = it },
                 hingeFor = container.postureMonitor::hingeFor,
                 onResize = container.postureMonitor::refresh,
+                windowAlpha = params.alpha,
             )
         }
         return try {
-            manager.addView(created, layoutParams(context))
+            manager.addView(created, params)
             view = created
             created
         } catch (e: WindowManager.BadTokenException) {
@@ -140,7 +175,8 @@ class CrackOverlayService : LifecycleService() {
     private fun layoutParams(context: Context): WindowManager.LayoutParams {
         // Since Android 12, touches only pass through another app's overlay window if its opacity is at most
         // the system's obscuring limit (0.8 by default). Above it, every touch under the crack would be blocked,
-        // so the window is capped at that limit even though the crack is then slightly translucent.
+        // so the window is capped at that limit; the view scales the crack's own alphas up to make up for it, so
+        // only its near-opaque parts end up slightly translucent.
         val touchLimit = context.getSystemService(InputManager::class.java)?.maximumObscuringOpacityForTouch ?: MAX_ALPHA
         return WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -179,12 +215,14 @@ class CrackOverlayService : LifecycleService() {
         }
     }
 
-    private fun buildNotification(): android.app.Notification {
+    private fun buildNotification(): Notification {
         val manager = NotificationManagerCompat.from(this)
+        // Same channel id as before the service was renamed, so an existing channel (and the user's choice for
+        // it) carries over; only its name and description are updated.
         manager.createNotificationChannel(
             NotificationChannelCompat.Builder(CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_LOW)
-                .setName(getString(R.string.overlay_channel_name))
-                .setDescription(getString(R.string.overlay_channel_description))
+                .setName(getString(R.string.service_channel_name))
+                .setDescription(getString(R.string.service_channel_description))
                 .setShowBadge(false)
                 .build(),
         )
@@ -196,8 +234,8 @@ class CrackOverlayService : LifecycleService() {
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(getString(R.string.overlay_notification_title))
-            .setContentText(getString(R.string.overlay_notification_text))
+            .setContentTitle(getString(R.string.service_notification_title))
+            .setContentText(getString(R.string.service_notification_text))
             .setContentIntent(open)
             .setOngoing(true)
             .setSilent(true)
@@ -210,7 +248,7 @@ class CrackOverlayService : LifecycleService() {
     private data class Frame(val settings: Settings, val active: ActiveCrack?, val snapshot: PostureSnapshot)
 
     private companion object {
-        const val TAG = "CrackOverlayService"
+        const val TAG = "HingeWatchService"
         const val CHANNEL_ID = "overlay"
         const val NOTIFICATION_ID = 1
         const val MAX_ALPHA = 0.8f

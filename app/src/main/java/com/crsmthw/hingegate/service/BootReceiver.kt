@@ -1,4 +1,4 @@
-package com.crsmthw.hingegate.overlay
+package com.crsmthw.hingegate.service
 
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
- * Restarts the overlay service after a reboot or an app update. Both broadcasts are exempt from the
+ * Restarts the foreground service after a reboot or an app update. Both broadcasts are exempt from the
  * background foreground-service start restrictions, and `specialUse` is not one of the types Android 15 bars
  * from BOOT_COMPLETED.
  */
@@ -21,7 +21,7 @@ class BootReceiver : BroadcastReceiver() {
         val pending = goAsync()
         container.appScope.launch {
             try {
-                OverlayStarter.sync(context.applicationContext, container.settingsRepository.settings.first())
+                ServiceStarter.sync(context.applicationContext, container.settingsRepository.settings.first())
             } finally {
                 pending.finish()
             }
