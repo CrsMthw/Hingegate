@@ -1,0 +1,27 @@
+name: CI
+
+# Unit tests + the full release lint on every pull request and on pushes to beta. No signing here: the
+# keystore never leaves the developer's machine, and an unsigned release variant is all lint needs.
+on:
+  pull_request:
+  push:
+    branches: [beta]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # Temurin 21 satisfies the daemon toolchain pin in gradle/gradle-daemon-jvm.properties.
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v6
+      # The runner image already ships platform 37.2 and build-tools 37.0.0; AGP installs them if ever missing.
+      - run: ./gradlew :app:testDebugUnitTest :app:lintRelease --console=plain
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: lint-report
+          path: app/build/reports/lint-results-release.*
