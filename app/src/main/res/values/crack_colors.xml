@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The crack's palette, by role (CrackColor in domain/CrackSpec.kt; mapped one to one in render/CrackPalette.kt).
+    Sampled from the reference photos in docs/reference/: an icy white band with a magenta-pink top fringe and
+    green / cyan / lavender fringes below, a dark violet split between two cores, a lime-yellow trail down the
+    fold, a charcoal hairline up it, and a near-black blot with a dark-blue sheen and pale specks.
+-->
+<resources>
+    <color name="crack_band_white">#FFFFFFFF</color>
+    <color name="crack_band_ice">#FFE6FAFF</color>
+    <color name="crack_band_pink">#FFFF6AD5</color>
+    <color name="crack_band_green">#FF6DFF7A</color>
+    <color name="crack_band_cyan">#FF7FF4FF</color>
+    <color name="crack_band_lavender">#FFCDBEFF</color>
+    <color name="crack_band_violet_dark">#FF4A2A6E</color>
+    <color name="crack_trail_yellow">#FFE9FF6E</color>
+    <color name="crack_trail_white">#FFFAFFE8</color>
+    <color name="crack_trail_dark">#FF2B2E33</color>
+    <color name="crack_blob_black">#FF06070A</color>
+    <color name="crack_blob_rim">#FF1C2C52</color>
+    <color name="crack_speck_light">#FFDDE6F2</color>
+    <color name="crack_speck_blue">#FF5B86E0</color>
+
+    <!-- The wallpaper mode's background while no image is set: black, like an idle panel. -->
+    <color name="wallpaper_fallback">#FF000000</color>
+</resources>

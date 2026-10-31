@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Slate, light enough for the black blot to read and dark enough for the white band to glow. -->
+    <color name="ic_launcher_background">#FF3A4250</color>
+</resources>

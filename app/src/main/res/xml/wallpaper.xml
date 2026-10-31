@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The live wallpaper's entry in the system picker. Its settings open the app's one screen. -->
+<wallpaper xmlns:android="http://schemas.android.com/apk/res/android"
+    android:author="@string/wallpaper_author"
+    android:description="@string/wallpaper_description"
+    android:settingsActivity="com.crsmthw.hingegate.MainActivity"
+    android:thumbnail="@drawable/wallpaper_thumbnail" />

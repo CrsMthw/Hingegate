@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Compose draws the whole UI; this only covers the window before the first frame, so it follows the
+         system's light/dark mode (values-night) to avoid a flash. Edge-to-edge is enforced at targetSdk 35+,
+         so no bar colours here. -->
+    <style name="Theme.Hingegate" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

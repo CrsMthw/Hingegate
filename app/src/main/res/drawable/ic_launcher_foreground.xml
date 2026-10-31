@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The crack itself, in miniature: a dark hairline up the crease, a lime trail down it, an icy band with a pink
+    and a cyan fringe running right, and the black blot where they meet. Everything sits inside the 66dp
+    safe-zone circle of the 108dp canvas, so no launcher mask clips it; the same drawable is the monochrome
+    layer (only its alpha is used there).
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="@color/crack_band_ice"
+        android:fillAlpha="0.25"
+        android:pathData="M54,51h30v10h-30z" />
+    <path
+        android:fillColor="@color/crack_trail_dark"
+        android:pathData="M53.4,24h1.2v30h-1.2z" />
+    <path
+        android:fillColor="@color/crack_trail_yellow"
+        android:pathData="M54.2,58h1.8v26h-1.8z" />
+    <path
+        android:fillColor="@color/crack_band_pink"
+        android:pathData="M55,52.6h29v1h-29z" />
+    <path
+        android:fillColor="@color/crack_band_white"
+        android:pathData="M55,54.2h29v3.4h-29z" />
+    <path
+        android:fillColor="@color/crack_band_cyan"
+        android:pathData="M55,58.2h29v1h-29z" />
+    <path
+        android:fillColor="@color/crack_blob_black"
+        android:strokeColor="@color/crack_blob_rim"
+        android:strokeWidth="0.8"
+        android:pathData="M54,46L56.5,50L58,49.5L57.5,53L59,56L57,58.5L58,62L55.5,61L54,66L52.5,61.5L50,62.5L51,58.5L49,56L51,53.5L50,49.5L52.5,50.5Z" />
+</vector>

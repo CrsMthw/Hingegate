@@ -1,3 +1,120 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Hingegate</string>
+
+    <!-- Overlay service notification -->
+    <string name="overlay_channel_name">Crack overlay</string>
+    <string name="overlay_channel_description">Shown while Hingegate waits to crack the screen on an unfold</string>
+    <string name="overlay_notification_title">Hingegate is ready</string>
+    <string name="overlay_notification_text">The crack may appear when you unfold the phone</string>
+
+    <!-- Live wallpaper picker -->
+    <string name="wallpaper_author">CrsMthw</string>
+    <string name="wallpaper_description">Your own image, now and then with a cracked hinge after an unfold</string>
+
+    <!-- Top app bar status line -->
+    <string name="status_off">Off</string>
+    <string name="status_learning">Learning your screens: fold and unfold once</string>
+    <string name="status_folded">Folded</string>
+    <string name="status_unfolded_cracked">Unfolded · crack showing</string>
+    <string name="status_unfolded_clean">Unfolded · no crack</string>
+
+    <!-- Preview -->
+    <string name="preview_title">Preview</string>
+    <string name="preview_description">A preview of the inner screen with a cracked hinge</string>
+    <string name="action_shuffle">Shuffle the preview crack</string>
+    <string name="preview_note">Every crack is different. This is what one could look like on your inner screen.</string>
+
+    <!-- Master switch -->
+    <string name="master_title">Crack on unfold</string>
+    <string name="master_summary">Now and then, unfolding cracks the inner screen until the next fold</string>
+
+    <!-- Mode -->
+    <string name="mode_title">Where the crack shows</string>
+    <string name="mode_overlay">Over everything</string>
+    <string name="mode_wallpaper">Wallpaper</string>
+    <string name="mode_overlay_hint">Drawn over every app, like a real defect. Your wallpaper stays as it is.</string>
+    <string name="mode_wallpaper_hint">Drawn on Hingegate\'s own live wallpaper, under your icons. No permission needed.</string>
+
+    <!-- Overlay setup -->
+    <string name="overlay_permission_title">Display over other apps</string>
+    <string name="overlay_permission_granted">Allowed</string>
+    <string name="overlay_permission_missing">Needed to draw the crack over other apps</string>
+    <string name="notifications_title">Notifications</string>
+    <string name="notifications_on">On</string>
+    <string name="notifications_off">Off. Optional: the crack works without them.</string>
+    <string name="service_title">Background service</string>
+    <string name="service_running">Running</string>
+    <string name="service_stopped">Not running</string>
+    <string name="action_allow">Allow</string>
+
+    <!-- Wallpaper setup -->
+    <string name="image_main">Main screen</string>
+    <string name="image_cover">Cover screen</string>
+    <string name="image_none">No image: plain black</string>
+    <string name="image_set">Image chosen</string>
+    <string name="action_choose">Choose</string>
+    <string name="action_remove">Remove</string>
+    <string name="wallpaper_status_title">Live wallpaper</string>
+    <string name="wallpaper_is_set">Hingegate is your wallpaper</string>
+    <string name="wallpaper_not_set">Not set yet</string>
+    <string name="action_set_wallpaper">Set as wallpaper</string>
+
+    <!-- How often -->
+    <string name="frequency_title">How often</string>
+    <string name="chance_title">Chance on each unfold</string>
+    <string name="chance_value">%1$d %%</string>
+    <string name="guarantee_title">Guarantee</string>
+    <string name="guarantee_off">No limit on clean unfolds in a row</string>
+    <plurals name="guarantee_value">
+        <item quantity="one">Never more than %d clean unfold in a row</item>
+        <item quantity="other">Never more than %d clean unfolds in a row</item>
+    </plurals>
+
+    <!-- Try it -->
+    <string name="try_title">Try it</string>
+    <string name="crack_next_title">Crack on the next unfold</string>
+    <string name="crack_next_summary">Whatever the odds, once</string>
+    <string name="action_show_now">Show crack now</string>
+    <string name="show_now_hint">Unfold the phone to show a crack now</string>
+    <string name="action_clear_crack">Clear crack</string>
+
+    <!-- Detection -->
+    <string name="detection_title">Detection</string>
+    <string name="detection_posture">Posture</string>
+    <string name="posture_unknown">Not known yet</string>
+    <string name="posture_folded">Folded</string>
+    <string name="posture_unfolded">Unfolded</string>
+    <string name="detection_method">Detected by</string>
+    <string name="method_display">Screen size</string>
+    <string name="method_window_manager">Window Manager</string>
+    <string name="method_learning">Still learning: fold and unfold once</string>
+    <string name="detection_hinge">Hinge position</string>
+    <string name="hinge_window_manager">Reported by Window Manager</string>
+    <string name="hinge_estimated">Estimated from the screen shape</string>
+    <string name="hinge_none">Known when unfolded</string>
+
+    <!-- Recent unfolds -->
+    <string name="log_title">Recent unfolds</string>
+    <string name="log_empty">Nothing yet. Fold and unfold the phone.</string>
+    <string name="action_clear_log">Clear log</string>
+    <string name="log_cracked_rolled">Unfolded — cracked (rolled %1$d; needed under %2$d %%)</string>
+    <plurals name="log_cracked_guaranteed">
+        <item quantity="one">Unfolded — cracked (guaranteed after %d clean unfold)</item>
+        <item quantity="other">Unfolded — cracked (guaranteed after %d clean unfolds)</item>
+    </plurals>
+    <string name="log_cracked_forced">Unfolded — cracked (asked for)</string>
+    <plurals name="log_clean">
+        <item quantity="one">Unfolded — clean (rolled %1$d, %2$d clean unfold in a row)</item>
+        <item quantity="other">Unfolded — clean (rolled %1$d, %2$d clean unfolds in a row)</item>
+    </plurals>
+    <string name="log_unfolded_off">Unfolded — Hingegate was off</string>
+    <string name="log_fold_cleared">Folded — crack cleared</string>
+    <string name="log_folded">Folded</string>
+    <string name="log_shown_by_hand">Crack shown by hand</string>
+    <string name="log_cleared_by_hand">Crack cleared by hand</string>
+
+    <!-- Errors -->
+    <string name="error_save">Could not save the change</string>
+    <string name="error_image">Could not use that image</string>
 </resources>
