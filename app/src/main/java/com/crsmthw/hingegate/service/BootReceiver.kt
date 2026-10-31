@@ -21,7 +21,7 @@ class BootReceiver : BroadcastReceiver() {
         val pending = goAsync()
         container.appScope.launch {
             try {
-                ServiceStarter.sync(context.applicationContext, container.settingsRepository.settings.first())
+                ServiceStarter.sync(context.applicationContext, container.settingsRepository.settings.first(), intent.action.orEmpty())
             } finally {
                 pending.finish()
             }

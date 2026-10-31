@@ -4,6 +4,14 @@ All notable changes to Hingegate are recorded here. Entries are never folded or 
 
 ## Unreleased
 
+### 2026-11-01 — build 3
+- The background service now also starts whenever the app's process starts, not only on boot, an update or opening
+  the app. One UI force-stops an app that is on screen while it is updated, and Android does not deliver the
+  "app updated" broadcast to a force-stopped app, so build 2's service stayed off after such an update until the
+  app was opened. When One UI relaunches the app's process after the update (as the Fold 8 did), the service now
+  comes back with it; when nothing relaunches it (as on the Fold 6), Android lets nothing restart a force-stopped
+  app until it is opened, as before. Each service start is logged with what started it.
+
 ### 2026-10-31 — build 2
 - The look (after testing build 1 on the Fold 8): the band from the blot to the right edge is much thicker — the
   thickest band seen on build 1 (≈ 13 dp) is now the thinnest, and every crack is 13–30 dp (a large splash 26–30 dp,

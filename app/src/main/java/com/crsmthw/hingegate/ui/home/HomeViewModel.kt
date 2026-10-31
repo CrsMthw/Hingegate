@@ -122,7 +122,7 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
                 Triple(settings, status.canDrawOverlays, status.allFilesAccess)
             }
                 .distinctUntilChanged()
-                .collect { (settings, _, _) -> ServiceStarter.sync(appContext, settings) }
+                .collect { (settings, _, _) -> ServiceStarter.sync(appContext, settings, "settings") }
         }
         // One UI answers "which live wallpaper is set" for the panel in use: read it again on every fold and
         // unfold, not only on resume, so the Live wallpaper card speaks about the screen it claims to.
@@ -140,7 +140,7 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         system.value = readSystem()
         // Also re-sync when nothing changed: a service the system refused to restart in the background comes
         // back as soon as the app is opened.
-        viewModelScope.launch { ServiceStarter.sync(appContext, settingsRepository.settings.first()) }
+        viewModelScope.launch { ServiceStarter.sync(appContext, settingsRepository.settings.first(), "app opened") }
         // The user may have changed the wallpaper while the app was away (docs/SWAP-MODE.md §3).
         container.wallpaperSwapper.recheck()
     }

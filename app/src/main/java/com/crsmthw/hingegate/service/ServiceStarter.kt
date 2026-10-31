@@ -24,15 +24,17 @@ object ServiceStarter {
         allFilesAccess = Environment.isExternalStorageManager(),
     )
 
-    fun sync(context: Context, settings: Settings) {
+    /** [reason] only labels the logcat line (process start, boot or update, the app's screen). */
+    fun sync(context: Context, settings: Settings, reason: String) {
         val intent = Intent(context, HingeWatchService::class.java)
         if (shouldRun(context, settings)) {
             try {
                 ContextCompat.startForegroundService(context, intent)
+                Log.i(TAG, "Service started ($reason)")
             } catch (e: IllegalStateException) {
                 // ForegroundServiceStartNotAllowedException (an IllegalStateException): the app is in the
                 // background without an exemption. The next resume of the app, or the next boot, starts it.
-                Log.w(TAG, "Service not allowed to start now", e)
+                Log.w(TAG, "Service not allowed to start now ($reason)", e)
             }
         } else {
             context.stopService(intent)
