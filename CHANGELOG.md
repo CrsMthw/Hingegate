@@ -4,10 +4,10 @@ All notable changes to Hingegate are recorded here. Entries are never folded or 
 
 ## Unreleased
 
-### 2026-11-01 — Pixel Fold fixes
+### 2026-11-01 — build 4: Pixel Fold fixes
 Found by two testers on Google Pixel Fold emulators (Android 17), the first time the app met a phone other than a
 Samsung foldable. Everything on Samsung stays exactly as it was: each change only applies where the phone is not a
-Samsung.
+Samsung. Installed on both Samsung phones as build 4 to check exactly that.
 - Real wallpaper: a wallpaper set from the cover screen is now kept. On a phone with one home wallpaper for both
   screens, the clean copy Hingegate puts back at each fold was never confirmed, so a wallpaper the user then set
   while folded was taken for Hingegate's own copy: the next unfold drew the crack on the OLD picture over it, or
