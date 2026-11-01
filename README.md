@@ -7,6 +7,46 @@ edge of the screen, and a thin line running down the fold. Fold the phone and it
 It was inspired by photos of a certain new foldable whose inner screens all seem to crack the same way at the
 hinge.
 
+## Screenshots
+
+Taken on the Pixel Fold emulator. Every crack is different.
+
+### The crack
+
+<table>
+  <tr>
+    <td><img src="assets/screenshots/crack-home.jpg" width="400"/></td>
+    <td><img src="assets/screenshots/crack-home-splash.jpg" width="400"/></td>
+  </tr>
+  <tr>
+    <td><img src="assets/screenshots/crack-clock.png" width="400"/></td>
+    <td><img src="assets/screenshots/crack-contacts.png" width="400"/></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><img src="assets/screenshots/crack-over-hingegate.png" width="400"/></td>
+  </tr>
+</table>
+
+### The app, unfolded
+
+<table>
+  <tr>
+    <td><img src="assets/screenshots/app-unfolded-light.png" width="400"/></td>
+    <td><img src="assets/screenshots/app-unfolded-dark.png" width="400"/></td>
+  </tr>
+</table>
+
+### The app, on the cover screen
+
+<table>
+  <tr>
+    <td><img src="assets/screenshots/app-cover-light.png" width="200"/></td>
+    <td><img src="assets/screenshots/app-cover-dark.png" width="200"/></td>
+    <td><img src="assets/screenshots/app-cover-modes.png" width="200"/></td>
+    <td><img src="assets/screenshots/app-cover-about.png" width="200"/></td>
+  </tr>
+</table>
+
 ## Three ways to show the crack
 
 - **Over everything**: the crack is drawn over every app, like a real display defect. Your wallpaper stays as it
