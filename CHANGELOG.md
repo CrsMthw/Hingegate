@@ -4,6 +4,12 @@ All notable changes to Hingegate are recorded here. Entries are never folded or 
 
 ## Unreleased
 
+## 1.0.0 — 2026-11-01
+
+The first release (versionCode 2). It works on any foldable on Android 12 or later. It was tested by hand on a Galaxy Z
+Fold 8 and a Fold 6 (builds 1–5, each with its own checklist) and on two Pixel Fold emulators. The entries below
+are the builds that led up to it.
+
 ### 2026-11-01 — build 5: About and credits
 - An About section at the end of the screen, laid out like the other CrsMthw apps: the app icon, name, the tagline
   "Giving emotional support to our sheep" and the version, a Credits card ("Made by CrsMthw and Claude"), a GitHub
