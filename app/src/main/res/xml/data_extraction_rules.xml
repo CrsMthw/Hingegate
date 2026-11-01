@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Nothing leaves the device: the learned panel sizes belong to this phone, and the wallpaper images are copies
+     the user can pick again. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="device_root" />
+        <exclude domain="external" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="device_root" />
+        <exclude domain="external" />
+    </device-transfer>
+</data-extraction-rules>

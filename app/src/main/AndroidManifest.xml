@@ -1,11 +1,46 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Overlay mode: the crack window over other apps, kept ready by a specialUse foreground service. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Optional: the service runs without it; it only makes its notification visible on Android 13+. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Real wallpaper mode (docs/SWAP-MODE.md §1, §5). Android hands the current wallpaper image only to an app
+         with All files access; it is used for nothing else (and the app has no internet permission). Lint's one
+         ScopedStorage warning about it is the single accepted lint warning (CLAUDE.md rule 4). -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <!-- Puts the user's wallpaper, with or without the crack, back on the inner screen's home screen. -->
+    <uses-permission android:name="android.permission.SET_WALLPAPER" />
+
+    <!-- Real wallpaper mode (docs/SWAP-MODE.md §1): getWallpaperInfo answers null for a live wallpaper whose package
+         the app cannot see, which would make a third-party live wallpaper look like a still one. Only apps that
+         offer a live wallpaper become visible; nothing else. -->
+    <queries>
+        <intent>
+            <action android:name="android.service.wallpaper.WallpaperService" />
+        </intent>
+    </queries>
+
+    <!-- Wallpaper mode needs live wallpapers, but the overlay mode works without them. -->
+    <uses-feature
+        android:name="android.software.live_wallpaper"
+        android:required="false" />
+
+    <!-- ONE process: no android:process anywhere. The activity, the foreground service and every wallpaper engine
+         must share one PostureMonitor and one CrackController, or an unfold could be rolled twice. -->
     <application
+        android:name=".HingegateApplication"
         android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.Material.NoActionBar">
+        android:theme="@style/Theme.Hingegate">
 
         <activity
             android:name=".MainActivity"
@@ -15,5 +50,39 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Exported for the system's wallpaper manager only: BIND_WALLPAPER is a signature permission. -->
+        <service
+            android:name=".wallpaper.HingegateWallpaperService"
+            android:exported="true"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/wallpaper" />
+        </service>
+
+        <!-- One service for the two modes nothing else keeps alive: over everything (it adds the crack window) and
+             Real wallpaper (it only keeps the wallpaper swapper's process alive across folds). -->
+        <service
+            android:name=".service.HingeWatchService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Watches the fold of a foldable phone to show a cosmetic display effect on the inner screen after an unfold, drawn over other apps or on the user's own wallpaper" />
+        </service>
+
+        <!-- Not exported: the system delivers its own broadcasts to non-exported receivers. -->
+        <receiver
+            android:name=".service.BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

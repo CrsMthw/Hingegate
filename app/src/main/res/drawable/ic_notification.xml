@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Status-bar silhouette of the crack: the crease, the blot and the band. One white path, as status icons must be. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M11.3,3h1v7.2L13.4,11.4H21v2.4h-7.6L12.3,15.1V21h-1V15.1L10.2,13.8L9.8,12.6L10.6,11.2L11.3,10.2Z" />
+</vector>

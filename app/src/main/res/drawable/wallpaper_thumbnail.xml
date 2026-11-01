@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The live wallpaper's picker thumbnail: an unfolded screen with the crack, drawn in the crack's own palette. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="96dp"
+    android:viewportWidth="120"
+    android:viewportHeight="96">
+    <path
+        android:fillColor="@color/ic_launcher_background"
+        android:pathData="M0,0h120v96h-120z" />
+    <path
+        android:fillColor="@color/crack_band_ice"
+        android:fillAlpha="0.3"
+        android:pathData="M60,54h60v9h-60z" />
+    <path
+        android:fillColor="@color/crack_trail_dark"
+        android:pathData="M59.6,0h0.8v58h-0.8z" />
+    <path
+        android:fillColor="@color/crack_trail_yellow"
+        android:pathData="M60,58h1.4v38h-1.4z" />
+    <path
+        android:fillColor="@color/crack_band_pink"
+        android:pathData="M60,55.4h60v0.8h-60z" />
+    <path
+        android:fillColor="@color/crack_band_white"
+        android:pathData="M60,56.6h60v2.6h-60z" />
+    <path
+        android:fillColor="@color/crack_band_green"
+        android:pathData="M60,59.7h60v0.7h-60z" />
+    <path
+        android:fillColor="@color/crack_band_lavender"
+        android:pathData="M60,60.8h60v0.6h-60z" />
+    <path
+        android:fillColor="@color/crack_blob_black"
+        android:pathData="M60,54.2L61.6,56.4L61.2,58.6L62,60.8L60.4,61.4L60,63.4L59.2,61.2L58,60.4L58.8,58.2L58.2,56.2Z" />
+</vector>

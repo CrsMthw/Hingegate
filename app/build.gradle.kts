@@ -36,8 +36,8 @@ android {
         // untrusted-touch opacity limit (API 31) are both there.
         minSdk        = 31
         targetSdk     = 37
-        versionCode   = 1
-        versionName   = "0.1.0"
+        versionCode   = 2
+        versionName   = "1.0.0"
     }
 
     signingConfigs {
@@ -70,7 +70,11 @@ android {
         targetCompatibility = JavaVersion.VERSION_21
     }
 
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose     = true
+        // VERSION_NAME for the About section; no secret is ever a buildConfigField (see the signing note above).
+        buildConfig = true
+    }
 }
 
 kotlin { jvmToolchain(21) }
