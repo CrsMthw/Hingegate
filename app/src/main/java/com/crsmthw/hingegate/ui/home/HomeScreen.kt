@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,6 +39,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
@@ -244,6 +246,14 @@ fun HomeScreen(viewModel: HomeViewModel, palette: CrackPalette, modifier: Modifi
                         secondary()
                     }
                 }
+                // Below both columns, centred, at most 480 dp wide.
+                AboutSection(
+                    onOpenLink = { url -> start(context, Intent(Intent.ACTION_VIEW, url.toUri())) },
+                    modifier = Modifier
+                        .padding(top = ScreenPadding * 2, bottom = ScreenPadding)
+                        .widthIn(max = ABOUT_MAX_WIDTH)
+                        .align(Alignment.CenterHorizontally),
+                )
             }
         }
     }
@@ -315,3 +325,6 @@ private const val INITIAL_PREVIEW_SEED = 31_10_2026L
 
 private val TWO_COLUMN_MIN_WIDTH = 600.dp
 private val ScreenPadding = 16.dp
+
+/** The About section's widest: 480 dp, centred below both columns. */
+private val ABOUT_MAX_WIDTH = 480.dp

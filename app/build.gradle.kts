@@ -70,7 +70,11 @@ android {
         targetCompatibility = JavaVersion.VERSION_21
     }
 
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose     = true
+        // VERSION_NAME for the About section; no secret is ever a buildConfigField (see the signing note above).
+        buildConfig = true
+    }
 }
 
 kotlin { jvmToolchain(21) }

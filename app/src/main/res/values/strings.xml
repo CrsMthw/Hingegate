@@ -167,6 +167,16 @@
     <string name="log_swap_failed_changed">Real wallpaper — the wallpaper changed while it was being read; it is read again</string>
     <string name="log_swap_failed_built_in">Real wallpaper — the phone\'s built-in wallpaper can\'t be read: set a still wallpaper first</string>
 
+    <!-- About (the end of the screen, as in Cris's other apps) -->
+    <string name="about_tagline">Giving emotional support to our sheep</string>
+    <string name="about_version">Version %1$s</string>
+    <string name="about_credits">Credits</string>
+    <string name="about_made_by">Made by CrsMthw and Claude</string>
+    <string name="about_made_by_sub">App design &amp; development</string>
+    <string name="about_github">GitHub</string>
+    <string name="about_github_handle">github.com/CrsMthw</string>
+    <string name="cd_buy_me_coffee">Buy me a coffee</string>
+
     <!-- Errors -->
     <string name="error_save">Could not save the change</string>
     <string name="error_image">Could not use that image</string>

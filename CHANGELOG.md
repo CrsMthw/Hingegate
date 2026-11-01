@@ -4,6 +4,13 @@ All notable changes to Hingegate are recorded here. Entries are never folded or 
 
 ## Unreleased
 
+### 2026-11-01 — build 5: About and credits
+- An About section at the end of the screen, laid out like the other CrsMthw apps: the app icon, name, the tagline
+  "Giving emotional support to our sheep" and the version, a Credits card ("Made by CrsMthw and Claude"), a GitHub
+  card and the Buy Me a Coffee button. Both links open in the browser; the app itself still has no internet access.
+  Unfolded, it is centred below both columns, at most 480 dp wide.
+- 2 new JVM tests (255 in all) for where the two links go.
+
 ### 2026-11-01 — build 4: Pixel Fold fixes
 Found by two testers on Google Pixel Fold emulators (Android 17), the first time the app met a phone other than a
 Samsung foldable. Everything on Samsung stays exactly as it was: each change only applies where the phone is not a
