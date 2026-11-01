@@ -78,7 +78,7 @@ enum class ShowNowAvailability { READY, NEEDS_SWITCH_ON, NEEDS_UNFOLD;
 enum class HomeMessage {
     SAVE_FAILED, IMAGE_FAILED,
     CAPTURED, CAPTURE_LIVE_WALLPAPER, CAPTURE_NO_PERMISSION, CAPTURE_NOT_UNFOLDED, CAPTURE_ALREADY_OURS, CAPTURE_NO_SIZE,
-    CAPTURE_FAILED;
+    CAPTURE_FAILED, CAPTURE_BUILT_IN;
 
     companion object {
         /** What the snackbar says when "Use my current wallpaper" failed for [failure]. */
@@ -89,6 +89,8 @@ enum class HomeMessage {
             SwapFailure.ALREADY_OURS -> CAPTURE_ALREADY_OURS
             // Nothing was read yet: the size of the inner screen trails a rotation or a panel swap for a moment.
             SwapFailure.NO_PANEL_SIZE -> CAPTURE_NO_SIZE
+            // The phone's own wallpaper has no file: retrying never helps, setting a still one does (SWAP-MODE §10.36).
+            SwapFailure.BUILT_IN_WALLPAPER -> CAPTURE_BUILT_IN
             // The wallpaper moved under the read: nothing was kept; tapping again reads it afresh.
             SwapFailure.READ_FAILED, SwapFailure.SET_FAILED, SwapFailure.CHANGED_DURING_READ, null -> CAPTURE_FAILED
         }
@@ -100,6 +102,32 @@ enum class HomeMessage {
  * confirmation dialog before the app opens Settings or the system prompt.
  */
 enum class PermissionKind { ALL_FILES, OVERLAY, NOTIFICATIONS }
+
+/**
+ * What the permission dialog says comes next (docs/SWAP-MODE.md §8): Android's own prompt, the app's own page in
+ * Settings, or — for "Display over other apps" off Samsung — Settings' LIST of apps: AOSP (Android 11+) ignores the
+ * app named in that request and opens the list, so the user has to find Hingegate in it (seen on the Pixel Fold
+ * emulator; One UI opens Hingegate's own page, as worded since build 1). DESIGN §18.25.
+ */
+enum class PermissionNext { SYSTEM_PROMPT, SETTINGS_PAGE, SETTINGS_LIST;
+
+    companion object {
+        fun of(kind: PermissionKind, systemPrompt: Boolean, isSamsung: Boolean): PermissionNext = when {
+            systemPrompt -> SYSTEM_PROMPT
+            kind == PermissionKind.OVERLAY && !isSamsung -> SETTINGS_LIST
+            else -> SETTINGS_PAGE
+        }
+    }
+}
+
+/**
+ * Whether the Over everything card says how to hide Android's own "Hingegate is displaying over other apps"
+ * notice, which AOSP posts in the shade for as long as the crack's window exists (DESIGN §18.24). Shown off Samsung
+ * only: seen on the Pixel Fold emulator, not yet checked on One UI, whose card stays as it is.
+ */
+object OverlayNoticeTip {
+    fun shows(isSamsung: Boolean): Boolean = !isSamsung
+}
 
 /** The Real wallpaper card's "Use my current wallpaper": possible only unfolded and with All files access. */
 enum class CaptureAvailability { READY, NEEDS_PERMISSION, NEEDS_UNFOLD;

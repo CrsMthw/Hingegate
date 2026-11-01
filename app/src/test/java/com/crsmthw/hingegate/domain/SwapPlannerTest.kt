@@ -380,7 +380,16 @@ class SwapPlannerTest {
     @Test
     fun `every failure is either passing or final`() {
         val final = SwapFailure.entries.filter { SwapIds.isFinal(it) }.toSet()
-        assertEquals(setOf(SwapFailure.LIVE_WALLPAPER, SwapFailure.NO_PERMISSION, SwapFailure.READ_FAILED, SwapFailure.SET_FAILED), final)
+        assertEquals(
+            setOf(
+                SwapFailure.LIVE_WALLPAPER,
+                SwapFailure.NO_PERMISSION,
+                SwapFailure.READ_FAILED,
+                SwapFailure.SET_FAILED,
+                SwapFailure.BUILT_IN_WALLPAPER,
+            ),
+            final,
+        )
     }
 
     // ── The guard before a set ───────────────────────────────────────────────
@@ -466,17 +475,80 @@ class SwapPlannerTest {
     }
 
     @Test
-    fun `a read-back counts while folded only when the reads name the panel`() {
-        assertTrue(SwapIds.readBackCounts(namesPanel = true, settledBefore = false, settledAfter = false))
-        assertTrue(SwapIds.readBackCounts(namesPanel = false, settledBefore = true, settledAfter = true))
-        assertFalse(SwapIds.readBackCounts(namesPanel = false, settledBefore = true, settledAfter = false))
-        assertFalse(SwapIds.readBackCounts(namesPanel = false, settledBefore = false, settledAfter = true))
+    fun `a read-back counts while folded only when the reads mean the inner screen whatever the fold`() {
+        assertTrue(SwapIds.readBackCounts(foldIndependent = true, settledBefore = false, settledAfter = false))
+        assertTrue(SwapIds.readBackCounts(foldIndependent = false, settledBefore = true, settledAfter = true))
+        assertFalse(SwapIds.readBackCounts(foldIndependent = false, settledBefore = true, settledAfter = false))
+        assertFalse(SwapIds.readBackCounts(foldIndependent = false, settledBefore = false, settledAfter = true))
     }
 
     @Test
     fun `only samsung reads name the inner panel`() {
         assertTrue(SwapFlags.namesPanel(SwapFlags.which(isSamsung = true, flagSystem = 1)))
         assertFalse(SwapFlags.namesPanel(SwapFlags.which(isSamsung = false, flagSystem = 1)))
+    }
+
+    @Test
+    fun `reads mean the inner screen whatever the fold on samsung with the panel bit and on one-wallpaper phones`() {
+        // Samsung: exactly as before, only the panel-named reads.
+        assertTrue(SwapFlags.readsFoldIndependent(isSamsung = true, which = SwapFlags.which(isSamsung = true, flagSystem = 1)))
+        assertFalse(SwapFlags.readsFoldIndependent(isSamsung = true, which = 1))
+        // A Pixel Fold's plain FLAG_SYSTEM: one wallpaper for both screens, the same id folded and unfolded.
+        assertTrue(SwapFlags.readsFoldIndependent(isSamsung = false, which = SwapFlags.which(isSamsung = false, flagSystem = 1)))
+        // On Samsung it never differs from namesPanel (the read-back rule there is unchanged).
+        listOf(1, 5).forEach { which ->
+            assertEquals(SwapFlags.namesPanel(which), SwapFlags.readsFoldIndependent(isSamsung = true, which = which))
+        }
+    }
+
+    @Test
+    fun `a wallpaper set from a pixel's cover screen after a folded clean set is captured, never adopted or overwritten`() {
+        // Lane B, B14a: STILL-2 captured (id 28), a crack showed, the fold set the clean copy (id 30).
+        val foldIndependent = SwapFlags.readsFoldIndependent(isSamsung = false, which = SwapFlags.which(isSamsung = false, flagSystem = 1))
+        val readable = SwapIds.readBackCounts(foldIndependent, settledBefore = false, settledAfter = false)
+        val confirmed = readable && SwapIds.confirmsSet(before = 29, after = 30, captureId = 28)
+        assertTrue(confirmed)
+        val afterFold = SwapState(
+            capture = SwapCapture(28, 0L),
+            frame = SwapFrame(2208, 1840, HingeLine(HingeOrientation.VERTICAL, 1104f, 0f, HingeSource.WINDOW_MANAGER), 2.625f),
+            staged = Staged.Clean,
+            ourIds = listOf(29, 30),
+            unconfirmedSet = SwapIds.unconfirmedAfterSet(isSamsung = false, namesPanel = false, confirmed = confirmed),
+            lastSet = Staged.Clean,
+        )
+        assertFalse(afterFold.unconfirmedSet)
+        // The user sets STILL-1 from the cover screen (id 31). At the unfold the cracked set is held over it…
+        assertEquals(IdCheck.CHANGED, SwapIds.check(31, afterFold))
+        assertTrue(SwapIds.blocksSet(31, afterFold))
+        // …and the settled checks suspect it, then recapture it (a clean unfold too: never ADOPT).
+        assertEquals(IdAction.SUSPECT, SwapIds.decide(31, afterFold, swapOn = true, sighting = null, epoch = 7, nowMs = 10_000).action)
+        val held = SwapIds.settle(IdAction.SUSPECT, afterFold, 31)
+        val sighting = Sighting(31, 10_000, 7)
+        assertEquals(IdAction.RECAPTURE, SwapIds.decide(31, held, swapOn = true, sighting = sighting, epoch = 7, nowMs = 10_600).action)
+        // Build 3's rule (the fold-time read-back never counted off Samsung) left the set unconfirmed: adopted.
+        val build3 = SwapIds.readBackCounts(foldIndependent = false, settledBefore = false, settledAfter = false)
+        assertFalse(build3)
+        assertEquals(IdCheck.ADOPT, SwapIds.check(31, afterFold.copy(unconfirmedSet = true)))
+        assertFalse(SwapIds.blocksSet(31, afterFold.copy(unconfirmedSet = true)))
+    }
+
+    @Test
+    fun `use my current wallpaper names the built-in wallpaper off samsung`() {
+        assertNull(SwapIds.handCaptureFailure(id = 3, isSamsung = false))
+        assertNull(SwapIds.handCaptureFailure(id = 3, isSamsung = true))
+        // Lane B, B6: the Pixel's shipped ImageWallpaper is id 0 with no file.
+        assertEquals(SwapFailure.BUILT_IN_WALLPAPER, SwapIds.handCaptureFailure(id = 0, isSamsung = false))
+        // No id at all stays a failed read; Samsung is unchanged.
+        assertEquals(SwapFailure.READ_FAILED, SwapIds.handCaptureFailure(id = -1, isSamsung = false))
+        assertEquals(SwapFailure.READ_FAILED, SwapIds.handCaptureFailure(id = 0, isSamsung = true))
+        assertEquals(SwapFailure.READ_FAILED, SwapIds.handCaptureFailure(id = -1, isSamsung = true))
+    }
+
+    @Test
+    fun `a still wallpaper with no file is the built-in one off samsung, live on samsung as before`() {
+        // Lane A's emulator after a reboot: the shipped ImageWallpaper under id 3, no file.
+        assertEquals(SwapFailure.BUILT_IN_WALLPAPER, SwapIds.missingFileFailure(isSamsung = false))
+        assertEquals(SwapFailure.LIVE_WALLPAPER, SwapIds.missingFileFailure(isSamsung = true))
     }
 
     @Test

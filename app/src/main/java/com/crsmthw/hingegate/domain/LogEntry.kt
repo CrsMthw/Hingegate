@@ -41,6 +41,13 @@ enum class SwapFailure {
      * away and the wallpaper read again; nothing is lost.
      */
     CHANGED_DURING_READ,
+
+    /**
+     * The wallpaper is the phone's built-in one, which has no file an app could read (off Samsung: a still wallpaper
+     * with no file, or the id 0, which AOSP never gives a wallpaper that was SET). Setting any still wallpaper first
+     * is the way out (docs/SWAP-MODE.md §10.36).
+     */
+    BUILT_IN_WALLPAPER,
 }
 
 /**

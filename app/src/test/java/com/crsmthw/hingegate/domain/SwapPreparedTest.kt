@@ -24,7 +24,8 @@ class SwapPreparedTest {
         cleanIsOriginal: Boolean = false,
         upcoming: List<CrackSpec> = listOf(next),
         showing: List<Long> = emptyList(),
-    ) = SwapPrepared.plan(source, frame, swapOn, restorePending, prepareAllowed, cleanIsOriginal, upcoming, showing)
+        anchor: CropAnchor = CropAnchor.CENTER,
+    ) = SwapPrepared.plan(source, frame, swapOn, restorePending, prepareAllowed, cleanIsOriginal, upcoming, showing, anchor)
 
     @Test
     fun `names are stable for the same inputs`() {
@@ -157,7 +158,8 @@ class SwapPreparedTest {
         active: ActiveCrack? = null,
         swapOn: Boolean = true,
         cleanIsOriginal: Boolean = false,
-    ) = SwapPrepared.planFor(source, swapOn, cleanIsOriginal, state, pending, nextSpec, active)
+        anchor: CropAnchor = CropAnchor.CENTER,
+    ) = SwapPrepared.planFor(source, swapOn, cleanIsOriginal, state, pending, nextSpec, active, anchor)
 
     private val hit = PendingRoll(true, HitReason.ROLLED, 10, 35, 4, 0, pendingSpec)
     private val miss = PendingRoll(false, HitReason.MISSED, 80, 35, 4, 0, null)
@@ -214,5 +216,45 @@ class SwapPreparedTest {
         assertFalse(SwapPrepared.originalServesAsClean("image/png", 1848, 2448, frame))
         // A bounds read that failed reports -1 × -1.
         assertFalse(SwapPrepared.originalServesAsClean("image/png", -1, -1, frame))
+    }
+
+    @Test
+    fun `with one wallpaper for both screens the original's own bytes are always the clean copy`() {
+        // Lane B, B14f: a 4000 x 3000 photo's captured file was 2798 x 2208; any size, any format.
+        listOf("image/png", "image/jpeg", "image/webp", null).forEach {
+            assertTrue(SwapPrepared.originalServesAsClean(it, 2798, 2208, frame, sharedWallpaper = true), "$it")
+        }
+        assertTrue(SwapPrepared.originalServesAsClean("image/png", 2448, 1848, frame, sharedWallpaper = true))
+        assertTrue(SwapPrepared.originalServesAsClean("image/png", 1728, 1920, frame, sharedWallpaper = true))
+        // Only a real image: a failed bounds read is not one.
+        assertFalse(SwapPrepared.originalServesAsClean("image/png", -1, -1, frame, sharedWallpaper = true))
+        assertFalse(SwapPrepared.originalServesAsClean(null, 0, 0, frame, sharedWallpaper = true))
+        // Samsung (one wallpaper per panel) keeps the exact-size PNG rule.
+        assertFalse(SwapPrepared.originalServesAsClean("image/png", 2798, 2208, frame, sharedWallpaper = false))
+    }
+
+    @Test
+    fun `the crop anchor is part of a prepared image's name and travels with it`() {
+        // The centre adds nothing: Samsung's names are as before.
+        assertEquals(SwapPrepared.crackedName(source, frame, 42), SwapPrepared.crackedName(source, frame, 42, CropAnchor.CENTER))
+        assertEquals(SwapPrepared.cleanName(source, frame), SwapPrepared.cleanName(source, frame, CropAnchor.CENTER))
+        val names = CropAnchor.entries.map { SwapPrepared.crackedName(source, frame, 42, it) }
+        assertEquals(names.size, names.toSet().size)
+        val cleanNames = CropAnchor.entries.map { SwapPrepared.cleanName(source, frame, it) }
+        assertEquals(cleanNames.size, cleanNames.toSet().size)
+        (names + cleanNames).forEach { assertTrue(SwapPrepared.isPreparedName(it), it) }
+        val p = plan(anchor = CropAnchor.START, showing = listOf(showing.seed))
+        assertEquals(
+            listOf(
+                PreparedImage(SwapPrepared.cleanName(source, frame, CropAnchor.START), null, CropAnchor.START),
+                PreparedImage(SwapPrepared.crackedName(source, frame, next.seed, CropAnchor.START), next, CropAnchor.START),
+            ),
+            p.toPrepare,
+        )
+        assertTrue(SwapPrepared.crackedName(source, frame, showing.seed, CropAnchor.START) in p.keep)
+        assertEquals(
+            planFor(anchor = CropAnchor.END).toPrepare.map { it.anchor }.toSet(),
+            setOf(CropAnchor.END),
+        )
     }
 }

@@ -11,6 +11,9 @@ import com.crsmthw.hingegate.ui.home.CaptureAvailability
 import com.crsmthw.hingegate.ui.home.HomeMessage
 import com.crsmthw.hingegate.ui.home.HomeStatus
 import com.crsmthw.hingegate.ui.home.LogTime
+import com.crsmthw.hingegate.ui.home.OverlayNoticeTip
+import com.crsmthw.hingegate.ui.home.PermissionKind
+import com.crsmthw.hingegate.ui.home.PermissionNext
 import com.crsmthw.hingegate.ui.home.ShowNowAvailability
 import com.crsmthw.hingegate.ui.home.WallpaperStatus
 import org.junit.Test
@@ -87,6 +90,31 @@ class HomeStatusTest {
         assertEquals(HomeMessage.CAPTURE_FAILED, HomeMessage.forCapture(SwapFailure.SET_FAILED))
         assertEquals(HomeMessage.CAPTURE_FAILED, HomeMessage.forCapture(SwapFailure.CHANGED_DURING_READ))
         assertEquals(HomeMessage.CAPTURE_FAILED, HomeMessage.forCapture(null))
+        // The Pixel's shipped wallpaper (id 0, no file): what to do, not "could not read".
+        assertEquals(HomeMessage.CAPTURE_BUILT_IN, HomeMessage.forCapture(SwapFailure.BUILT_IN_WALLPAPER))
+        SwapFailure.entries.forEach { HomeMessage.forCapture(it) }
+    }
+
+    @Test
+    fun `the permission dialog says what comes next`() {
+        // Android's own prompt (notifications on 13+), whatever the phone.
+        assertEquals(PermissionNext.SYSTEM_PROMPT, PermissionNext.of(PermissionKind.NOTIFICATIONS, systemPrompt = true, isSamsung = true))
+        assertEquals(PermissionNext.SYSTEM_PROMPT, PermissionNext.of(PermissionKind.NOTIFICATIONS, systemPrompt = true, isSamsung = false))
+        // Display over other apps: Hingegate's own page on Samsung, AOSP's list of apps elsewhere (lane A, A4).
+        assertEquals(PermissionNext.SETTINGS_PAGE, PermissionNext.of(PermissionKind.OVERLAY, systemPrompt = false, isSamsung = true))
+        assertEquals(PermissionNext.SETTINGS_LIST, PermissionNext.of(PermissionKind.OVERLAY, systemPrompt = false, isSamsung = false))
+        // All files access opens Hingegate's own page on both (lane B, B5); so do notification settings.
+        PermissionKind.entries.filter { it != PermissionKind.OVERLAY }.forEach { kind ->
+            listOf(true, false).forEach { samsung ->
+                assertEquals(PermissionNext.SETTINGS_PAGE, PermissionNext.of(kind, systemPrompt = false, isSamsung = samsung), "$kind $samsung")
+            }
+        }
+    }
+
+    @Test
+    fun `the over everything card explains the system notice off samsung only`() {
+        assertTrue(OverlayNoticeTip.shows(isSamsung = false))
+        assertFalse(OverlayNoticeTip.shows(isSamsung = true))
     }
 
     @Test

@@ -4,6 +4,38 @@ All notable changes to Hingegate are recorded here. Entries are never folded or 
 
 ## Unreleased
 
+### 2026-11-01 — Pixel Fold fixes
+Found by two testers on Google Pixel Fold emulators (Android 17), the first time the app met a phone other than a
+Samsung foldable. Everything on Samsung stays exactly as it was: each change only applies where the phone is not a
+Samsung.
+- Real wallpaper: a wallpaper set from the cover screen is now kept. On a phone with one home wallpaper for both
+  screens, the clean copy Hingegate puts back at each fold was never confirmed, so a wallpaper the user then set
+  while folded was taken for Hingegate's own copy: the next unfold drew the crack on the OLD picture over it, or
+  adopted it, and the next fold put the old picture back for good. The id read right after a set now confirms it
+  folded too (there is only one wallpaper to read), so a wallpaper set from the cover screen is recognised as the
+  user's and captured ("you changed your wallpaper; the new one is captured"); if that unfold rolled a crack, it
+  appears on the new picture about two seconds late, once.
+- Real wallpaper: a wallpaper that is not exactly the screen's size (most photos) is no longer moved. The clean copy
+  and "Put my wallpaper back" now hand the system the captured file itself, so both screens frame it as before
+  (inner screen pixel-identical, cover screen within 1 px, against 68 and 78 px before), and the cracked copy is cut
+  from the part of the picture the inner screen shows, so the picture stays put while the crack shows. Android has
+  no public way to read the full-size original or to set a crop per screen, so after the first swap the system
+  keeps the smaller file it showed the screens from (they look the same).
+- Real wallpaper: "Use my current wallpaper" on the phone's built-in wallpaper (which has no file any app can read)
+  now says so and what to do — "This is the phone's built-in wallpaper, which apps can't read. Set a still wallpaper
+  first (any photo, or one from your wallpaper settings), then try again." — instead of "Could not read your
+  wallpaper" (or, after a reboot, "A live wallpaper is set").
+- Over everything: while the crack shows, Android lists "Hingegate is displaying over other apps" in the
+  notification shade, which gives the prank away. Apps cannot hide it; the card now explains how to switch that one
+  notice off (long-press it, Turn off, switch off only "Hingegate displaying over other apps", Apply), checked step
+  by step on the emulator.
+- Over everything: the "Allow Display over other apps?" dialog now says that Settings opens with a list of apps and
+  to tap Hingegate in it — Android ignores the app's own page for this permission there.
+- 15 new JVM tests (253 in all): reads that mean the inner screen whatever the fold, the cover-screen change being
+  held, suspected and recaptured instead of adopted, the built-in wallpaper's two cases, the clean copy being the
+  captured file, where the cracked copy is cut from (and that Samsung's crop and file names are unchanged), the
+  permission dialog's next step and the notice tip.
+
 ### 2026-11-01 — build 3
 - The background service now also starts whenever the app's process starts, not only on boot, an update or opening
   the app. One UI force-stops an app that is on screen while it is updated, and Android does not deliver the

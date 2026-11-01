@@ -9,12 +9,14 @@ import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import android.view.Display
+import android.view.View
 import com.crsmthw.hingegate.crack.CrackController
 import com.crsmthw.hingegate.crack.CrackState
 import com.crsmthw.hingegate.data.CrackLog
 import com.crsmthw.hingegate.data.CrackMode
 import com.crsmthw.hingegate.data.SettingsRepository
 import com.crsmthw.hingegate.data.SwapRepository
+import com.crsmthw.hingegate.domain.CropAnchor
 import com.crsmthw.hingegate.domain.IdAction
 import com.crsmthw.hingegate.domain.IdCheck
 import com.crsmthw.hingegate.domain.LogEntry
@@ -34,6 +36,7 @@ import com.crsmthw.hingegate.domain.SwapFailure
 import com.crsmthw.hingegate.domain.SwapFlags
 import com.crsmthw.hingegate.domain.SwapFrame
 import com.crsmthw.hingegate.domain.SwapFrames
+import com.crsmthw.hingegate.domain.SwapFraming
 import com.crsmthw.hingegate.domain.SwapIds
 import com.crsmthw.hingegate.domain.SwapInput
 import com.crsmthw.hingegate.domain.SwapPlanner
@@ -116,6 +119,12 @@ class WallpaperSwapper(
 
     /** The source's reads name the inner panel (Samsung): their ids mean the inner screen even while folded. */
     private val namesPanel: Boolean = SwapFlags.namesPanel(source.readWhich)
+
+    /**
+     * The source's ids mean the inner screen's wallpaper whatever the fold state: Samsung's panel-named reads, or
+     * the one wallpaper both screens share elsewhere (docs/SWAP-MODE.md §10.34). On Samsung this is [namesPanel].
+     */
+    private val foldIndependentReads: Boolean = SwapFlags.readsFoldIndependent(isSamsung, source.readWhich)
 
     private val mutex = Mutex()
     private val kicks = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
@@ -202,8 +211,9 @@ class WallpaperSwapper(
         val reads = source.readIds()
         val id = reads.inner
         Log.i(TAG, "capture asked: ${describe(key)} ${describeIds(reads)} ${describe(state)}")
-        // Without an id nothing could ever tell this capture from Hingegate's own copies.
-        if (id <= 0) return fail(SwapFailure.READ_FAILED)
+        // Without an id nothing could ever tell this capture from Hingegate's own copies; id 0 off Samsung is the
+        // phone's built-in wallpaper, which has no file (SWAP-MODE §10.36).
+        SwapIds.handCaptureFailure(id, isSamsung)?.let { return fail(it) }
         when (SwapIds.check(id, state)) {
             IdCheck.OURS -> return fail(SwapFailure.ALREADY_OURS)
             IdCheck.ADOPT -> {
@@ -506,12 +516,13 @@ class WallpaperSwapper(
             }
             failedFor = null
             // The id the inner screen reports right after. It counts as our copy only when the reads mean the inner
-            // screen — they name its panel (Samsung, folded or not: §10.33), or both were settled — it changed, and it
-            // is not the original's; anything else stays unconfirmed for the next settled check, which confirms it,
-            // adopts it, or reports the miss.
+            // screen — they name its panel (Samsung, folded or not: §10.33), they read the one wallpaper both screens
+            // share (elsewhere, folded or not: §10.34), or both were settled — it changed, and it is not the
+            // original's; anything else stays unconfirmed for the next settled check, which confirms it, adopts it, or
+            // reports the miss.
             val settledAfter = settledNow() && currentKey() == keyBefore
             val after = source.readIds()
-            val readable = SwapIds.readBackCounts(namesPanel, settledBefore, settledAfter)
+            val readable = SwapIds.readBackCounts(foldIndependentReads, settledBefore, settledAfter)
             val confirmed = readable && SwapIds.confirmsSet(before.inner, after.inner, captureId)
             lastSetReadable = readable
             val postureNow = controller.state.value.posture
@@ -558,12 +569,13 @@ class WallpaperSwapper(
      */
     private suspend fun imageFor(captureId: Int, frame: SwapFrame, action: SwapAction.Apply): Result<SetImage> {
         val key = prepared.sourceFor(captureId)
+        val anchor = anchor()
         if (key != null) {
             val target = action.target
             if (target == Staged.Clean && cleanIsOriginal(key, frame)) return Result.success(SetImage.Stream(source.originalFile, "original"))
             val name = when (target) {
-                Staged.Clean -> SwapPrepared.cleanName(key, frame)
-                is Staged.Cracked -> SwapPrepared.crackedName(key, frame, target.seed)
+                Staged.Clean -> SwapPrepared.cleanName(key, frame, anchor)
+                is Staged.Cracked -> SwapPrepared.crackedName(key, frame, target.seed, anchor)
             }
             prepared.existing(name)?.let { return Result.success(SetImage.Stream(it, "prepared")) }
             prepareTask?.result(name)?.let { inProgress ->
@@ -575,7 +587,7 @@ class WallpaperSwapper(
         }
         val renderStarted = uptime()
         return try {
-            withContext(Dispatchers.IO) { renderer.render(frame, action.spec) }
+            withContext(Dispatchers.IO) { renderer.render(frame, action.spec, anchor) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: RuntimeException) {
@@ -713,6 +725,7 @@ class WallpaperSwapper(
             pending = crack.pending,
             nextSpec = crack.nextSpec,
             active = crack.active,
+            anchor = anchor(),
         )
         val names = plan.toPrepare.map { it.name }
         val task = prepareTask
@@ -730,6 +743,14 @@ class WallpaperSwapper(
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
+
+    /**
+     * Where the cracked copy's panel-sized part of the original is taken from (docs/SWAP-MODE.md §10.35): the centre
+     * on Samsung; elsewhere the start of the line, as the wallpaper server shows a wide image — from the right in a
+     * right-to-left language.
+     */
+    private fun anchor(): CropAnchor =
+        SwapFraming.anchor(isSamsung, rtl = appContext.resources.configuration.layoutDirection == View.LAYOUT_DIRECTION_RTL)
 
     /** The inner panel's frame from the current display, or null when it cannot be measured right now. */
     private fun frameNow(snapshot: PostureSnapshot): SwapFrame? {

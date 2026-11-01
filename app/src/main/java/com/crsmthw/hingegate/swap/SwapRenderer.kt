@@ -6,16 +6,18 @@ import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
 import androidx.core.graphics.createBitmap
+import com.crsmthw.hingegate.domain.CropAnchor
 import com.crsmthw.hingegate.domain.CrackSpec
 import com.crsmthw.hingegate.domain.SwapFailure
 import com.crsmthw.hingegate.domain.SwapFrame
-import com.crsmthw.hingegate.domain.WallpaperChoice
+import com.crsmthw.hingegate.domain.SwapFraming
 import com.crsmthw.hingegate.render.CrackPalette
 import com.crsmthw.hingegate.render.CrackRenderer
 
 /**
  * Draws the two variants of the user's wallpaper for the Real wallpaper mode (docs/SWAP-MODE.md §3, §9): the
- * captured original center-cropped to the inner panel's NATURAL (rotation 0) size, and the same with the crack on
+ * captured original cropped to the inner panel's NATURAL (rotation 0) size — from the centre on Samsung, from the
+ * part the server shows the inner screen elsewhere ([SwapFraming], §10.35) — and the same with the crack on
  * top, drawn by the shared [CrackRenderer] with rotation 0 and the hinge in natural coordinates. Display-sized, so
  * the system shows it 1:1; if it scales the image to its own wallpaper size, it scales about the centre, which
  * keeps the hinge on the hinge.
@@ -33,17 +35,18 @@ class SwapRenderer(private val source: CurrentWallpaperSource, private val palet
     private var crackRenderer: CrackRenderer? = null
 
     /**
-     * The variant for [frame]: clean when [spec] is null, cracked otherwise. One full-panel bitmap (about 18 MB
-     * on a 2448 × 1848 panel); the caller recycles it after the set. Fails with a [SwapException].
+     * The variant for [frame]: clean when [spec] is null, cracked otherwise, the original's panel-sized part taken
+     * at [anchor]. One full-panel bitmap (about 18 MB on a 2448 × 1848 panel); the caller recycles it after the set.
+     * Fails with a [SwapException].
      */
-    suspend fun render(frame: SwapFrame, spec: CrackSpec?): Result<Bitmap> {
+    suspend fun render(frame: SwapFrame, spec: CrackSpec?, anchor: CropAnchor): Result<Bitmap> {
         if (frame.width <= 0 || frame.height <= 0) return Result.failure(SwapException(SwapFailure.NO_PANEL_SIZE))
         val original = source.decodeOriginal(frame.width, frame.height)
             ?: return Result.failure(SwapException(SwapFailure.READ_FAILED))
         return try {
             val output = createBitmap(frame.width, frame.height)
             val canvas = Canvas(output)
-            val crop = WallpaperChoice.centerCrop(original.width, original.height, frame.width, frame.height)
+            val crop = SwapFraming.crop(original.width, original.height, frame.width, frame.height, anchor)
             canvas.drawBitmap(
                 original,
                 Rect(crop.left.toInt(), crop.top.toInt(), crop.right.toInt(), crop.bottom.toInt()),

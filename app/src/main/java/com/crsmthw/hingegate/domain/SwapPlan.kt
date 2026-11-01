@@ -387,9 +387,35 @@ object SwapIds {
 
     /** Failures that say the wallpaper cannot be read at all, as opposed to "not right now". */
     fun isFinal(failure: SwapFailure): Boolean = when (failure) {
-        SwapFailure.LIVE_WALLPAPER, SwapFailure.NO_PERMISSION, SwapFailure.READ_FAILED, SwapFailure.SET_FAILED -> true
+        SwapFailure.LIVE_WALLPAPER, SwapFailure.NO_PERMISSION, SwapFailure.READ_FAILED, SwapFailure.SET_FAILED,
+        SwapFailure.BUILT_IN_WALLPAPER,
+        -> true
         SwapFailure.NOT_UNFOLDED, SwapFailure.ALREADY_OURS, SwapFailure.NO_PANEL_SIZE, SwapFailure.CHANGED_DURING_READ -> false
     }
+
+    /**
+     * Why "Use my current wallpaper" cannot use the inner screen's current [id], or null when it can (a positive
+     * id). No id (-1: the read failed) stays [SwapFailure.READ_FAILED]: without one nothing could tell the capture
+     * from Hingegate's copies. Id 0 on a phone with one wallpaper for both screens is the phone's BUILT-IN
+     * wallpaper, which has no file (AOSP never gives a set wallpaper the id 0; seen on the Pixel Fold emulator, its
+     * shipped `ImageWallpaper`): [SwapFailure.BUILT_IN_WALLPAPER], so the message says to set a still wallpaper
+     * first instead of "could not read" (docs/SWAP-MODE.md §10.36). Samsung is unchanged.
+     */
+    fun handCaptureFailure(id: Int, isSamsung: Boolean): SwapFailure? = when {
+        id > 0 -> null
+        id == 0 && !isSamsung -> SwapFailure.BUILT_IN_WALLPAPER
+        else -> SwapFailure.READ_FAILED
+    }
+
+    /**
+     * Why a capture failed when the system gave NO file for a wallpaper that is not live (the live check comes
+     * first). On Samsung, as since build 1, a live wallpaper (a stock one can hide from the live check, SWAP-MODE
+     * §1). Elsewhere the phone's built-in wallpaper, drawn by the system with no file: after a reboot the Pixel Fold
+     * emulator's shipped `ImageWallpaper` had the id 3 and still no file, so the id alone does not tell
+     * ([handCaptureFailure] covers id 0). It said "a live wallpaper is set" for it (docs/SWAP-MODE.md §10.36).
+     */
+    fun missingFileFailure(isSamsung: Boolean): SwapFailure =
+        if (isSamsung) SwapFailure.LIVE_WALLPAPER else SwapFailure.BUILT_IN_WALLPAPER
 
     /**
      * The state saved right BEFORE the binder set of [target] (docs/SWAP-MODE.md §10.26): the set marked unconfirmed,
@@ -422,11 +448,12 @@ object SwapIds {
 
     /**
      * Whether the ids read right before and after a set say anything about the inner screen (docs/SWAP-MODE.md
-     * §10.33): always when the reads name the inner panel ([namesPanel], Samsung's `FLAG_SYSTEM | 4`, answered for
-     * the inner panel whatever the fold state), else only when both were taken in a settled inner state.
+     * §10.33, §10.34): always when the reads mean the inner screen's wallpaper whatever the fold state
+     * ([foldIndependent], [SwapFlags.readsFoldIndependent]: Samsung's `FLAG_SYSTEM | 4`, or the one wallpaper a
+     * Pixel shows on both screens), else only when both were taken in a settled inner state.
      */
-    fun readBackCounts(namesPanel: Boolean, settledBefore: Boolean, settledAfter: Boolean): Boolean =
-        namesPanel || (settledBefore && settledAfter)
+    fun readBackCounts(foldIndependent: Boolean, settledBefore: Boolean, settledAfter: Boolean): Boolean =
+        foldIndependent || (settledBefore && settledAfter)
 
     /**
      * Whether a set stays unconfirmed: when the read-back did not confirm it, and on Samsung also whenever the reads
@@ -469,6 +496,14 @@ object SwapFlags {
 
     /** Whether reads with [which] name the inner panel (Samsung's bit), so their answer never follows the fold state. */
     fun namesPanel(which: Int): Boolean = which and FLAG_DISPLAY_PHONE != 0
+
+    /**
+     * Whether an id read with [which] means the inner screen's home wallpaper whatever the fold state: on Samsung
+     * only with the panel bit ([namesPanel]); elsewhere always — one home wallpaper serves both screens (a Pixel
+     * Fold's plain `FLAG_SYSTEM` id is the same folded and unfolded), so there is nothing else it could mean
+     * (docs/SWAP-MODE.md §10.34). On Samsung this is exactly [namesPanel], as before.
+     */
+    fun readsFoldIndependent(isSamsung: Boolean, which: Int): Boolean = namesPanel(which) || !isSamsung
 
     /**
      * Whether a wallpaper-colours change reported with [which] can concern the inner screen's wallpaper: on

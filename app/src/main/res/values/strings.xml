@@ -46,6 +46,7 @@
     <string name="action_continue">Continue</string>
     <string name="action_not_now">Not now</string>
     <string name="permission_next_settings">Settings opens next. Turn it on for Hingegate, then come back.</string>
+    <string name="permission_next_settings_list">Settings opens next with a list of apps. Tap Hingegate, turn it on, then come back.</string>
     <string name="permission_next_prompt">Android asks you next. If it doesn\'t ask (or you say no), Hingegate\'s notification settings open instead.</string>
     <string name="permission_all_files_title">All files access</string>
     <string name="permission_all_files_missing">Needed to read your current wallpaper</string>
@@ -59,6 +60,7 @@
     <!-- Overlay setup -->
     <string name="overlay_permission_title">Display over other apps</string>
     <string name="overlay_permission_missing">Needed to draw the crack over other apps</string>
+    <string name="overlay_notice_tip">While the crack shows, Android lists \"Hingegate is displaying over other apps\" in the notification shade. To hide it: long-press that notice, tap Turn off, switch off only \"Hingegate displaying over other apps\" and tap Apply.</string>
     <string name="notifications_title">Notifications</string>
     <string name="notifications_on">On</string>
     <string name="notifications_off">Off. Optional: the crack works without them.</string>
@@ -163,6 +165,7 @@
     <string name="log_swap_failed_read">Real wallpaper — could not read the wallpaper</string>
     <string name="log_swap_failed_set">Real wallpaper — the system refused the new wallpaper</string>
     <string name="log_swap_failed_changed">Real wallpaper — the wallpaper changed while it was being read; it is read again</string>
+    <string name="log_swap_failed_built_in">Real wallpaper — the phone\'s built-in wallpaper can\'t be read: set a still wallpaper first</string>
 
     <!-- Errors -->
     <string name="error_save">Could not save the change</string>
@@ -174,4 +177,5 @@
     <string name="error_capture_ours">That is already Hingegate\'s copy of your wallpaper</string>
     <string name="error_capture_no_size">The inner screen\'s size isn\'t known yet: try again in a moment</string>
     <string name="error_capture_failed">Could not read your wallpaper</string>
+    <string name="error_capture_built_in">This is the phone\'s built-in wallpaper, which apps can\'t read. Set a still wallpaper first (any photo, or one from your wallpaper settings), then try again.</string>
 </resources>

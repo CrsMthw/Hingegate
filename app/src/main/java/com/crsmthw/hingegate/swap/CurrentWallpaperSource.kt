@@ -12,6 +12,7 @@ import android.util.Log
 import com.crsmthw.hingegate.domain.SwapFailure
 import com.crsmthw.hingegate.domain.SwapFlags
 import com.crsmthw.hingegate.domain.SwapFrame
+import com.crsmthw.hingegate.domain.SwapIds
 import com.crsmthw.hingegate.domain.SwapPrepared
 import com.crsmthw.hingegate.domain.WallpaperChoice
 import kotlinx.coroutines.CancellationException
@@ -96,15 +97,17 @@ class CurrentWallpaperSource(context: Context, private val isSamsung: Boolean) {
      * after checking it decodes; [commit] makes it the original, [discard] drops it, so a capture the caller
      * finds out of date never replaces a working original. A live wallpaper has no image: that is the typed
      * failure [SwapFailure.LIVE_WALLPAPER] ("set a static wallpaper first"). The live check comes FIRST: for
-     * Samsung's own live wallpapers One UI returns a thumbnail as the "file" (§1), which must never be captured.
+     * Samsung's own live wallpapers One UI returns a thumbnail as the "file" (§1), which must never be captured. A
+     * still wallpaper with no file is [SwapIds.missingFileFailure]: off Samsung the phone's built-in wallpaper.
      */
     suspend fun capture(): Result<Captured> = withContext(Dispatchers.IO) {
         try {
             if (!isGranted()) throw SwapException(SwapFailure.NO_PERMISSION)
             if (isLive()) throw SwapException(SwapFailure.LIVE_WALLPAPER)
             val id = currentId()
+            // No file for a still wallpaper: Samsung's hidden live one, or elsewhere the phone's built-in wallpaper.
             val descriptor = wallpaperManager.getWallpaperFile(readWhich)
-                ?: throw SwapException(SwapFailure.LIVE_WALLPAPER)
+                ?: throw SwapException(SwapIds.missingFileFailure(isSamsung))
             dir.mkdirs()
             ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { input ->
                 candidate.outputStream().use { input.copyTo(it) }
@@ -163,13 +166,14 @@ class CurrentWallpaperSource(context: Context, private val isSamsung: Boolean) {
 
     /**
      * Whether the original's own bytes are already the clean copy for [frame] ([SwapPrepared.originalServesAsClean]
-     * decides from the file's format and size, read here without decoding the pixels).
+     * decides from the file's format and size, read here without decoding the pixels; always, when it is a real
+     * image, on a phone with one wallpaper for both screens: docs/SWAP-MODE.md §10.35).
      */
     suspend fun originalMatches(frame: SwapFrame): Boolean = withContext(Dispatchers.IO) {
         if (!originalFile.isFile) return@withContext false
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(originalFile.path, bounds)
-        SwapPrepared.originalServesAsClean(bounds.outMimeType, bounds.outWidth, bounds.outHeight, frame)
+        SwapPrepared.originalServesAsClean(bounds.outMimeType, bounds.outWidth, bounds.outHeight, frame, sharedWallpaper = !isSamsung)
     }
 
     /** The captured image decoded to cover [targetW] × [targetH] (sampled, SOFTWARE), or null without one. */

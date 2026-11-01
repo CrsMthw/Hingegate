@@ -7,8 +7,11 @@ package com.crsmthw.hingegate.domain
  */
 data class PreparedSource(val stamp: Long, val captureId: Int, val originalLength: Long, val originalModifiedMs: Long)
 
-/** One image to prepare under [name]: the clean copy when [spec] is null, else the original with that crack. */
-data class PreparedImage(val name: String, val spec: CrackSpec?)
+/**
+ * One image to prepare under [name]: the clean copy when [spec] is null, else the original with that crack; the
+ * original's panel-sized part taken at [anchor] (docs/SWAP-MODE.md §10.35).
+ */
+data class PreparedImage(val name: String, val spec: CrackSpec?, val anchor: CropAnchor = CropAnchor.CENTER)
 
 /** The images to prepare now, in order, and every file name that may stay on disk (the rest are deleted). */
 data class PreparePlan(val toPrepare: List<PreparedImage>, val keep: Set<String>)
@@ -34,13 +37,19 @@ object SwapPrepared {
     /** A prepare writes a full panel in a few seconds at most; a temporary file this old has no writer left. */
     const val TEMP_MAX_AGE_MS = 10 * 60 * 1000L
 
-    /** The clean copy: the original center-cropped to the panel. The hinge does not change its pixels. */
-    fun cleanName(source: PreparedSource, frame: SwapFrame): String =
-        "$CLEAN_PREFIX${sourceKey(source)}_${frame.width}x${frame.height}$SUFFIX"
+    /**
+     * The clean copy: the original cropped to the panel at [anchor] (the centre: Samsung, as named since build 2).
+     * The hinge does not change its pixels.
+     */
+    fun cleanName(source: PreparedSource, frame: SwapFrame, anchor: CropAnchor = CropAnchor.CENTER): String =
+        "$CLEAN_PREFIX${sourceKey(source)}_${frame.width}x${frame.height}${anchorKey(anchor)}$SUFFIX"
 
-    /** The original with the crack of [seed], for [frame] (size, hinge position and thickness, density). */
-    fun crackedName(source: PreparedSource, frame: SwapFrame, seed: Long): String =
-        "$CRACKED_PREFIX${sourceKey(source)}_${frameKey(frame)}_${seed.toULong().toString(HEX)}$SUFFIX"
+    /**
+     * The original with the crack of [seed], for [frame] (size, hinge position and thickness, density), cropped at
+     * [anchor] (the centre adds nothing to the name, so Samsung's names are as before).
+     */
+    fun crackedName(source: PreparedSource, frame: SwapFrame, seed: Long, anchor: CropAnchor = CropAnchor.CENTER): String =
+        "$CRACKED_PREFIX${sourceKey(source)}_${frameKey(frame)}${anchorKey(anchor)}_${seed.toULong().toString(HEX)}$SUFFIX"
 
     /** Whether [name] is a finished prepared image (not a temporary file). */
     fun isPreparedName(name: String): Boolean =
@@ -70,6 +79,7 @@ object SwapPrepared {
      *   that order, but only while [prepareAllowed] (no stale or suspected capture: nothing new is made from an
      *   image the user may have replaced). The cracks [showing] (active or staged) are kept, never re-made: a set
      *   made late after an unfold can still use them.
+     * Every image is cropped at [anchor] (docs/SWAP-MODE.md §10.35), which is part of its name.
      */
     fun plan(
         source: PreparedSource?,
@@ -80,15 +90,16 @@ object SwapPrepared {
         cleanIsOriginal: Boolean,
         upcoming: List<CrackSpec>,
         showing: List<Long>,
+        anchor: CropAnchor = CropAnchor.CENTER,
     ): PreparePlan {
         if (source == null || frame == null) return PreparePlan(emptyList(), emptySet())
-        val clean = PreparedImage(cleanName(source, frame), null).takeUnless { cleanIsOriginal }
+        val clean = PreparedImage(cleanName(source, frame, anchor), null, anchor).takeUnless { cleanIsOriginal }
         if (!swapOn) {
             return PreparePlan(emptyList(), if (restorePending && clean != null) setOf(clean.name) else emptySet())
         }
-        val cracks = upcoming.distinctBy { it.seed }.map { PreparedImage(crackedName(source, frame, it.seed), it) }
+        val cracks = upcoming.distinctBy { it.seed }.map { PreparedImage(crackedName(source, frame, it.seed, anchor), it, anchor) }
         val wanted = listOfNotNull(clean) + cracks
-        val keep = wanted.map { it.name }.toSet() + showing.map { crackedName(source, frame, it) }
+        val keep = wanted.map { it.name }.toSet() + showing.map { crackedName(source, frame, it, anchor) }
         return PreparePlan(if (prepareAllowed) wanted else emptyList(), keep)
     }
 
@@ -106,6 +117,7 @@ object SwapPrepared {
         pending: PendingRoll?,
         nextSpec: CrackSpec?,
         active: ActiveCrack?,
+        anchor: CropAnchor = CropAnchor.CENTER,
     ): PreparePlan = plan(
         source = source,
         frame = state.frame,
@@ -115,6 +127,7 @@ object SwapPrepared {
         cleanIsOriginal = cleanIsOriginal,
         upcoming = listOfNotNull(pending?.spec, nextSpec),
         showing = listOfNotNull(active?.spec?.seed, (state.staged as? Staged.Cracked)?.seed),
+        anchor = anchor,
     )
 
     /**
@@ -123,9 +136,19 @@ object SwapPrepared {
      * [height] as stored. Then the clean copy is the original streamed as it is — pixel-identical — and not
      * prepared. Anything else (another format, another size: captured before a resolution change or a frame
      * correction) would be cropped or scaled by the server differently from the rendered clean copy.
+     *
+     * With one home wallpaper for both screens ([sharedWallpaper]: every phone but Samsung) the original's own
+     * bytes are ALWAYS the clean copy, whatever their size or format (docs/SWAP-MODE.md §10.35): the captured file is
+     * what the server shows both screens from, and handed back unchanged the server frames it for each screen as it
+     * did before. A panel-sized centre crop re-framed a wallpaper not sized to the panel on both screens, for good.
+     * [width] and [height] only have to be a real image's (a failed bounds read reports -1 × -1).
      */
-    fun originalServesAsClean(mime: String?, width: Int, height: Int, frame: SwapFrame): Boolean =
-        mime == PNG_MIME && width == frame.width && height == frame.height
+    fun originalServesAsClean(mime: String?, width: Int, height: Int, frame: SwapFrame, sharedWallpaper: Boolean = false): Boolean =
+        if (sharedWallpaper) {
+            width > 0 && height > 0
+        } else {
+            mime == PNG_MIME && width == frame.width && height == frame.height
+        }
 
     private fun sourceKey(source: PreparedSource): String = listOf(
         source.stamp.toULong().toString(HEX),
@@ -142,6 +165,10 @@ object SwapPrepared {
         bits(frame.hinge.thicknessPx),
         bits(frame.density),
     ).joinToString("_")
+
+    /** Nothing for the centre (Samsung, names as before), else the anchor's initial. */
+    private fun anchorKey(anchor: CropAnchor): String =
+        if (anchor == CropAnchor.CENTER) "" else "_${anchor.name.first()}"
 
     private fun bits(value: Float): String = value.toRawBits().toUInt().toString(HEX)
 

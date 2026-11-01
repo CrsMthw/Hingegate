@@ -68,7 +68,7 @@ class PreparedImages(
                 rendering.withLock {
                     // A prepare cancelled while it waited for the renderer does not draw at all.
                     ensureActive()
-                    renderer.render(frame, image.spec)
+                    renderer.render(frame, image.spec, image.anchor)
                 }
             } catch (e: CancellationException) {
                 throw e

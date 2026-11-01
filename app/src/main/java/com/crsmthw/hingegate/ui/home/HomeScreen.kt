@@ -101,6 +101,7 @@ fun HomeScreen(viewModel: HomeViewModel, palette: CrackPalette, modifier: Modifi
         PermissionDialog(
             kind = kind,
             systemPrompt = kind == PermissionKind.NOTIFICATIONS && notificationsPrompt,
+            isSamsung = viewModel.isSamsung,
             onContinue = {
                 asking = null
                 when (kind) {
@@ -171,6 +172,7 @@ fun HomeScreen(viewModel: HomeViewModel, palette: CrackPalette, modifier: Modifi
                 when (state.settings.mode) {
                     CrackMode.OVERLAY -> OverlaySetup(
                         canDrawOverlays = state.system.canDrawOverlays,
+                        isSamsung = viewModel.isSamsung,
                         notificationsAllowed = state.system.notificationsAllowed,
                         serviceRunning = state.serviceRunning,
                         onAllowOverlay = { asking = PermissionKind.OVERLAY },
@@ -271,6 +273,7 @@ private fun messageText(message: HomeMessage): String = stringResource(
         HomeMessage.CAPTURE_ALREADY_OURS -> R.string.error_capture_ours
         HomeMessage.CAPTURE_NO_SIZE -> R.string.error_capture_no_size
         HomeMessage.CAPTURE_FAILED -> R.string.error_capture_failed
+        HomeMessage.CAPTURE_BUILT_IN -> R.string.error_capture_built_in
     },
 )
 

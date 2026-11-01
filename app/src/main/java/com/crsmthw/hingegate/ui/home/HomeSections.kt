@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Layers
+import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.rounded.Photo
 import androidx.compose.material.icons.rounded.ScreenRotation
 import androidx.compose.material.icons.rounded.Shuffle
@@ -292,7 +293,13 @@ private fun PermissionRow(
  * the card, what happens next, and "Continue to Settings" (or "Continue" before a system prompt) / "Not now".
  */
 @Composable
-internal fun PermissionDialog(kind: PermissionKind, systemPrompt: Boolean, onContinue: () -> Unit, onDismiss: () -> Unit) {
+internal fun PermissionDialog(
+    kind: PermissionKind,
+    systemPrompt: Boolean,
+    isSamsung: Boolean,
+    onContinue: () -> Unit,
+    onDismiss: () -> Unit,
+) {
     val title = when (kind) {
         PermissionKind.ALL_FILES -> R.string.permission_all_files_dialog_title
         PermissionKind.OVERLAY -> R.string.permission_overlay_dialog_title
@@ -303,7 +310,11 @@ internal fun PermissionDialog(kind: PermissionKind, systemPrompt: Boolean, onCon
         PermissionKind.OVERLAY -> R.string.permission_overlay_explanation
         PermissionKind.NOTIFICATIONS -> R.string.permission_notifications_explanation
     }
-    val next = if (systemPrompt) R.string.permission_next_prompt else R.string.permission_next_settings
+    val next = when (PermissionNext.of(kind, systemPrompt, isSamsung)) {
+        PermissionNext.SYSTEM_PROMPT -> R.string.permission_next_prompt
+        PermissionNext.SETTINGS_PAGE -> R.string.permission_next_settings
+        PermissionNext.SETTINGS_LIST -> R.string.permission_next_settings_list
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(title)) },
@@ -325,6 +336,7 @@ internal fun PermissionDialog(kind: PermissionKind, systemPrompt: Boolean, onCon
 @Composable
 internal fun OverlaySetup(
     canDrawOverlays: Boolean,
+    isSamsung: Boolean,
     notificationsAllowed: Boolean,
     serviceRunning: Boolean,
     onAllowOverlay: () -> Unit,
@@ -337,6 +349,8 @@ internal fun OverlaySetup(
         granted = canDrawOverlays,
         onAllow = onAllowOverlay,
     )
+    // Android's own notice about the crack's window gives the prank away in the shade (DESIGN §18.24).
+    if (OverlayNoticeTip.shows(isSamsung)) InfoLine(Icons.Rounded.NotificationsOff, stringResource(R.string.overlay_notice_tip))
     ServiceRows(notificationsAllowed, serviceRunning, onAllowNotifications)
 }
 
@@ -689,6 +703,7 @@ private fun logSentence(entry: LogEntry): String = when (val phrase = LogPhrase.
             SwapFailure.READ_FAILED -> R.string.log_swap_failed_read
             SwapFailure.SET_FAILED -> R.string.log_swap_failed_set
             SwapFailure.CHANGED_DURING_READ -> R.string.log_swap_failed_changed
+            SwapFailure.BUILT_IN_WALLPAPER -> R.string.log_swap_failed_built_in
         },
     )
 }
